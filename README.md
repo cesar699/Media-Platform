@@ -25,8 +25,10 @@ python3 app.py 5000
 
 ## 服务器部署 (Ubuntu/Debian, 自动 HTTPS)
 
+VPS 上一行搞定 (自动拉代码、装依赖、起服务、配 Caddy 自动证书):
+
 ```bash
-sudo DOMAIN=dl.csmp.si bash deploy.sh
+curl -fsSL https://raw.githubusercontent.com/cesar699/Media-Platform/main/deploy.sh | sudo DOMAIN=dl.csmp.si bash
 ```
 
 - 域名需已解析到本机 (如 `dl.csmp.si` 的 A 记录指向 VPS)

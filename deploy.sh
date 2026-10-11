@@ -1,16 +1,39 @@
 #!/bin/bash
 # CSMP 畅搜媒体平台一键部署 (Ubuntu/Debian)
-# 功能: 安装依赖 -> systemd 常驻服务 -> Caddy 反代 + 自动申请 Let's Encrypt 证书
+# 功能: 拉取代码 -> 安装依赖 -> systemd 常驻服务 -> Caddy 反代 + 自动申请 Let's Encrypt 证书
 #
-# 用法: sudo DOMAIN=dl.csmp.si bash deploy.sh
-#   (域名需已解析到本机; 如用根域名 csmp.si, 则 DOMAIN=csmp.si)
+# VPS 上一行搞定:
+#   curl -fsSL https://raw.githubusercontent.com/cesar699/Media-Platform/main/deploy.sh | sudo DOMAIN=dl.csmp.si bash
+#
+# (域名需已解析到本机; 如用根域名 csmp.si, 则 DOMAIN=csmp.si)
 set -e
 
 DOMAIN="${DOMAIN:-dl.csmp.si}"
-APP_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO="cesar699/Media-Platform"
+INSTALL_DIR="/opt/csmp"
 SERVICE_USER="${SUDO_USER:-$USER}"
 
-echo "== 域名: $DOMAIN =="
+# 确定代码来源: 在仓库里直接运行就用本地, 否则从 GitHub 拉最新
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || pwd)"
+if [ -f "$SCRIPT_DIR/app.py" ] && [ -f "$SCRIPT_DIR/requirements.txt" ]; then
+  SRC_DIR="$SCRIPT_DIR"
+  echo "== 使用本地代码: $SRC_DIR =="
+else
+  echo "== 从 GitHub 拉取最新代码 =="
+  rm -rf /tmp/csmp-src
+  mkdir -p /tmp/csmp-src
+  curl -fsSL "https://github.com/$REPO/archive/refs/heads/main.tar.gz" \
+    | tar xz -C /tmp/csmp-src
+  SRC_DIR="/tmp/csmp-src/Media-Platform-main"
+fi
+
+echo "== 安装到 $INSTALL_DIR (域名: $DOMAIN) =="
+rm -rf "$INSTALL_DIR"
+mkdir -p "$INSTALL_DIR/downloads"
+cp "$SRC_DIR/app.py" "$SRC_DIR/requirements.txt" "$INSTALL_DIR/"
+cp -r "$SRC_DIR/templates" "$INSTALL_DIR/"
+chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
+APP_DIR="$INSTALL_DIR"
 
 echo "== 1/5 安装依赖 =="
 apt-get update -qq
@@ -18,8 +41,6 @@ apt-get install -y -qq python3 python3-pip ffmpeg curl debian-keyring debian-arc
 pip3 install --break-system-packages -q -r "$APP_DIR/requirements.txt"
 
 echo "== 2/5 systemd 服务 =="
-# 确保服务用户对程序目录可写 (下载目录在其中)
-chown -R "$SERVICE_USER:$SERVICE_USER" "$APP_DIR"
 cat > /etc/systemd/system/csmp.service <<EOF
 [Unit]
 Description=CSMP 畅搜媒体平台
