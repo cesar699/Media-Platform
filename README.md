@@ -31,7 +31,6 @@ sudo DOMAIN=dl.csmp.si bash deploy.sh
 
 - 域名需已解析到本机 (如 `dl.csmp.si` 的 A 记录指向 VPS)
 - Caddy 自动完成 Let's Encrypt 证书申请与续期, 零手动操作
-- 部署脚本会自动生成访问账号密码 (basic_auth) 并打印出来, 请妥善保存
 - 需放行 80/443 端口 (含云厂商安全组)
 
 ## 说明

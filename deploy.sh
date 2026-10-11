@@ -47,16 +47,10 @@ if ! command -v caddy > /dev/null; then
   apt-get update -qq && apt-get install -y -qq caddy > /dev/null
 fi
 
-echo "== 4/5 配置自动证书 + 访问密码 =="
-ADMIN_USER="admin"
-ADMIN_PASS="$(openssl rand -base64 18 | tr -d '/+=' | head -c 16)"
-PASS_HASH="$(caddy hash-password --plaintext "$ADMIN_PASS")"
+echo "== 4/5 配置自动证书 =="
 cat > /etc/caddy/Caddyfile <<EOF
 # CSMP 畅搜媒体平台 (Caddy 自动申请/续期 Let's Encrypt 证书)
 $DOMAIN {
-	basic_auth {
-		$ADMIN_USER $PASS_HASH
-	}
 	reverse_proxy 127.0.0.1:5000
 }
 EOF
@@ -71,7 +65,5 @@ ufw allow 443/tcp 2>/dev/null || true
 
 echo ""
 echo "部署完成! 访问 https://$DOMAIN"
-echo "访问账号: $ADMIN_USER"
-echo "访问密码: $ADMIN_PASS  (请妥善保存)"
 echo "证书由 Caddy 自动向 Let's Encrypt 申请并续期, 无需手动操作。"
 echo "注意: 域名 $DOMAIN 必须已解析到本机 IP, 且 80/443 端口对外可达 (云厂商安全组也要放行)。"

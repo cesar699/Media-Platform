@@ -1,10 +1,7 @@
 # CSMP 畅搜媒体平台 — Caddy 配置示例
-# 实际部署请用 deploy.sh, 它会自动生成带域名的正式配置
-# (含 basic_auth 密码), 并由 Caddy 自动向 Let's Encrypt 申请/续期证书。
+# 实际部署请用 deploy.sh, 它会自动生成带域名的正式配置,
+# 并由 Caddy 自动向 Let's Encrypt 申请/续期证书。
 
 dl.csmp.si {
-	basic_auth {
-		admin $2a$14$REPLACE_WITH_caddy_hash_password_OUTPUT
-	}
 	reverse_proxy 127.0.0.1:5000
 }
