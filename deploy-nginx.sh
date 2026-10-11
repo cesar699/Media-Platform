@@ -61,6 +61,7 @@ need_cmd python3 || TO_INSTALL="$TO_INSTALL python3"
 need_cmd pip3    || TO_INSTALL="$TO_INSTALL python3-pip"
 need_cmd ffmpeg  || TO_INSTALL="$TO_INSTALL ffmpeg"
 need_cmd curl    || TO_INSTALL="$TO_INSTALL curl"
+python3 -c "import venv, ensurepip" 2>/dev/null || TO_INSTALL="$TO_INSTALL python3-venv"
 if [ -n "$TO_INSTALL" ]; then
   echo "缺少:$TO_INSTALL, 将自动安装"
 else
@@ -94,7 +95,9 @@ for cmd in python3 pip3 ffmpeg curl; do
 done
 echo "  $(python3 --version 2>&1)"
 echo "  $(ffmpeg -version 2>/dev/null | head -n 1)"
-pip3 install --break-system-packages -q -r "$APP_DIR/requirements.txt"
+# venv 隔离安装 Python 依赖，不污染系统 Python (不用 --break-system-packages)
+python3 -m venv "$APP_DIR/venv"
+"$APP_DIR/venv/bin/pip" install -q -r "$APP_DIR/requirements.txt"
 
 echo "== 3/5 systemd 服务 =="
 cat > /etc/systemd/system/csmp.service <<EOF
@@ -107,7 +110,7 @@ User=$SERVICE_USER
 WorkingDirectory=$APP_DIR
 # 单 worker + 多线程: 任务状态存在内存中, 多 worker 会导致查不到任务;
 # gthread 让长连接 (视频推流) 不阻塞其他请求
-ExecStart=/usr/local/bin/gunicorn -w 1 -k gthread --threads 8 -b 127.0.0.1:5000 app:app
+ExecStart=$APP_DIR/venv/bin/gunicorn -w 1 -k gthread --threads 8 -b 127.0.0.1:5000 app:app
 Restart=always
 RestartSec=5
 
