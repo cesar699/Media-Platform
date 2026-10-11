@@ -3,12 +3,13 @@
 # 功能: 拉取代码 -> 安装依赖 -> systemd 常驻服务 -> Caddy 反代 + 自动申请 Let's Encrypt 证书
 #
 # VPS 上一行搞定:
-#   curl -fsSL https://raw.githubusercontent.com/cesar699/Media-Platform/main/deploy.sh | sudo DOMAIN=dl.csmp.si bash
+#   curl -fsSL https://raw.githubusercontent.com/cesar699/Media-Platform/main/deploy.sh | sudo bash
 #
-# (域名需已解析到本机; 如用根域名 csmp.si, 则 DOMAIN=csmp.si)
+# (默认用根域名 csmp.si, 需已解析到本机; 换别的域名则加 DOMAIN=xxx, 如
+#  curl -fsSL https://raw.githubusercontent.com/cesar699/Media-Platform/main/deploy.sh | sudo DOMAIN=dl.csmp.si bash)
 set -e
 
-DOMAIN="${DOMAIN:-dl.csmp.si}"
+DOMAIN="${DOMAIN:-csmp.si}"
 REPO="cesar699/Media-Platform"
 INSTALL_DIR="/opt/csmp"
 SERVICE_USER="${SUDO_USER:-$USER}"

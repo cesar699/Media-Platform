@@ -28,10 +28,10 @@ python3 app.py 5000
 VPS 上一行搞定 (自动拉代码、装依赖、起服务、配 Caddy 自动证书):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cesar699/Media-Platform/main/deploy.sh | sudo DOMAIN=dl.csmp.si bash
+curl -fsSL https://raw.githubusercontent.com/cesar699/Media-Platform/main/deploy.sh | sudo bash
 ```
 
-- 域名需已解析到本机 (如 `dl.csmp.si` 的 A 记录指向 VPS)
+- 默认用根域名 `csmp.si` (A 记录已指向 VPS); 换别的域名在 sudo 后加 `DOMAIN=xxx`
 - Caddy 自动完成 Let's Encrypt 证书申请与续期, 零手动操作
 - 需放行 80/443 端口 (含云厂商安全组)
 

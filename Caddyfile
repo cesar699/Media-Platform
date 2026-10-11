@@ -2,6 +2,6 @@
 # 实际部署请用 deploy.sh, 它会自动生成带域名的正式配置,
 # 并由 Caddy 自动向 Let's Encrypt 申请/续期证书。
 
-dl.csmp.si {
+csmp.si {
 	reverse_proxy 127.0.0.1:5000
 }
