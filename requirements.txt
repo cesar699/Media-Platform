@@ -2,3 +2,4 @@ flask>=3.0
 yt-dlp
 gunicorn
 requests
+curl_cffi  # yt-dlp TLS 指纹伪装，反爬严格的站点需要
