@@ -26,6 +26,13 @@ app = Flask(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DL_DIR = os.path.join(BASE_DIR, "downloads")
 os.makedirs(DL_DIR, exist_ok=True)
+# 启动时清理上次异常中断的残留分片
+for _f in os.listdir(DL_DIR):
+    if _f.endswith((".part", ".ytdl")):
+        try:
+            os.remove(os.path.join(DL_DIR, _f))
+        except OSError:
+            pass
 
 jobs = {}  # job_id -> {status,total,done,files,errors,created}
 MAX_JOBS = 100
@@ -34,6 +41,29 @@ stream_cache = {}  # page_url -> {url, title, at}
 STREAM_TTL = 1800
 # gunicorn 用单 worker + 多线程 (gthread) 运行, 所有内存状态跨线程共享, 用锁保护
 state_lock = threading.RLock()
+
+# ---- 轻量限流 (无外部依赖, 防公网滥用) ----
+rate_buckets = {}  # (ip, endpoint) -> [timestamps]
+
+
+def client_ip():
+    fwd = request.headers.get("X-Forwarded-For", "")
+    return (fwd.split(",")[0].strip() or request.remote_addr or "?")[:64]
+
+
+def check_rate(endpoint, max_n, per_sec):
+    """每 IP 每 per_sec 秒最多 max_n 次, 超限返回 429 响应, 否则返回 None。"""
+    now = time.time()
+    key = (client_ip(), endpoint)
+    with state_lock:
+        ts = [t for t in rate_buckets.get(key, []) if now - t < per_sec]
+        if len(ts) >= max_n:
+            return jsonify({"ok": False, "error": "请求太频繁，请稍后再试"}), 429
+        ts.append(now)
+        rate_buckets[key] = ts
+        if len(rate_buckets) > 2000:
+            rate_buckets.clear()
+    return None
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0 Safari/537.36")
 
@@ -216,7 +246,9 @@ def download_direct(url, title_hint="video"):
     """直接下载文件 URL (用于无水印直链)。带上 Cookie 会话, 失败时清理残留文件。"""
     safe = re.sub(r'[\\/:*?"<>|]', "_", title_hint)[:60] or "video"
     dest = os.path.join(DL_DIR, safe + ".mp4")
-    headers = {"User-Agent": UA_MOBILE, "Referer": "https://www.iesdouyin.com/"}
+    headers = {"User-Agent": UA_MOBILE}
+    if "douyin.com" in url or "iesdouyin.com" in url:
+        headers["Referer"] = "https://www.iesdouyin.com/"
     s = requests.Session()
     if os.path.isfile(COOKIE_FILE):
         try:
@@ -246,11 +278,16 @@ def index():
 
 @app.route("/api/search", methods=["POST"])
 def api_search():
+    hit = check_rate("search", 30, 60)
+    if hit:
+        return hit
     data = request.get_json(force=True)
     query = (data.get("query") or "").strip()
     site = data.get("site") or "youtube"
     if not query:
         return jsonify({"ok": False, "error": "请输入链接或关键词"}), 400
+    if len(query) > 500:
+        return jsonify({"ok": False, "error": "搜索内容过长"}), 400
     try:
         items = search_videos(query, site)
     except Exception as e:  # noqa: BLE001
@@ -260,11 +297,16 @@ def api_search():
 
 @app.route("/api/download", methods=["POST"])
 def api_download():
+    hit = check_rate("download", 10, 60)
+    if hit:
+        return hit
     data = request.get_json(force=True)
     items = data.get("items") or []
     items = [i for i in items if i.get("url")]
     if not items:
         return jsonify({"ok": False, "error": "没有可下载的视频"}), 400
+    if len(items) > 100:
+        return jsonify({"ok": False, "error": "一次最多下载 100 个"}), 400
     quality = data.get("quality") or "best"
     clean = bool(data.get("clean"))
     jid = uuid.uuid4().hex[:12]
@@ -303,8 +345,11 @@ def api_cookies():
             os.remove(COOKIE_FILE)
         return jsonify({"ok": True})
     data = request.get_json(force=True)
+    text = data.get("text") or ""
+    if len(text) > 256 * 1024:
+        return jsonify({"ok": False, "error": "Cookie 内容过长"}), 400
     try:
-        content = parse_cookies(data.get("domain"), data.get("text"))
+        content = parse_cookies(data.get("domain"), text)
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
     with open(COOKIE_FILE, "w", encoding="utf-8") as f:
@@ -411,6 +456,9 @@ def get_direct_stream(page_url):
 def api_stream():
     """直接播放: 解析直链后由服务器实时转发视频流给浏览器 (支持 Range 拖进度)。
     会员视频需先在 🍪 里保存 Cookie。"""
+    hit = check_rate("stream", 60, 60)
+    if hit:
+        return hit
     page_url = (request.args.get("url") or "").strip()
     if not page_url.startswith(("http://", "https://")):
         return jsonify({"ok": False, "error": "无效的视频链接"}), 400
@@ -427,7 +475,7 @@ def api_stream():
         headers["Range"] = rng
     try:
         up = requests.get(direct_url, headers=headers,
-                          stream=True, timeout=30)
+                          stream=True, timeout=(10, 60))
     except Exception as e:
         return jsonify({"ok": False,
                         "error": "上游连接失败: " + str(e)[:200]}), 502

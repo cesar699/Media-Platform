@@ -319,7 +319,8 @@
     <div class="cookieBox">
       <div class="ctitle">🍪 会员 Cookie <span id="cookieStatus" class="cstatus"></span></div>
       <div class="ctip">在视频网站登录后，把 Cookie 填进来，就能搜/下会员视频。<br>
-        获取方式：浏览器装「Get cookies.txt」插件导出，或按 F12 在控制台输入
+        获取方式：推荐浏览器装「Get cookies.txt」插件导出
+        （能拿到按 F12 看不到的 HttpOnly Cookie）；或按 F12 在控制台输入
         <code>document.cookie</code> 复制。</div>
       <input type="text" id="cookieDomain" placeholder="域名，如 pornhub.com（插件导出格式可不填）">
       <textarea id="cookieText" rows="4" placeholder="粘贴 Cookie（插件导出的 Netscape 格式，或 name=value; 格式）"></textarea>
@@ -429,18 +430,24 @@ function toggleAll() {
 async function doDownload() {
   const sel = items.filter(i => i._sel);
   if (!sel.length) { setStatus("请先勾选视频"); return; }
-  document.getElementById("dlBtn").disabled = true;
+  const btn = document.getElementById("dlBtn");
+  btn.disabled = true;
   document.getElementById("doneList").innerHTML = "";
   const quality = document.getElementById("quality").value;
   const clean = document.getElementById("clean").checked;
-  const r = await fetch("/api/download", {
-    method: "POST", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({items: sel.map(i => ({url: i.url, title: i.title})), quality, clean})
-  });
-  const j = await r.json();
-  if (!j.ok) { setStatus("出错: " + j.error); document.getElementById("dlBtn").disabled = false; return; }
-  setStatus((clean ? "尽量无水印 · " : "") + "下载中…");
-  poll(j.job);
+  try {
+    const r = await fetch("/api/download", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({items: sel.map(i => ({url: i.url, title: i.title})), quality, clean})
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error);
+    setStatus((clean ? "尽量无水印 · " : "") + "下载中…");
+    poll(j.job);
+  } catch (e) {
+    setStatus("出错: " + e.message);
+    btn.disabled = false;
+  }
 }
 
 function fmtSize(b) {
