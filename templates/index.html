@@ -224,11 +224,11 @@
   .cookieBox .crow button {
     padding: 10px 26px; border-radius: 10px; font-size: 14px; cursor: pointer; border: none;
   }
-  #cookieSave {
+  #cookieSave, #proxySave {
     background: linear-gradient(120deg, var(--acc1), var(--acc2));
     color: #fff; font-weight: 700;
   }
-  #cookieClear {
+  #cookieClear, #proxyClear {
     background: rgba(255,255,255,.07); color: var(--txt); border: 1px solid var(--line);
   }
 
@@ -307,6 +307,7 @@
   <div class="filebar">
     <button id="filesBtn" onclick="toggleFiles()">📁 已下载文件</button>
     <button id="cookieBtn" onclick="toggleCookies()">🍪 会员 Cookie</button>
+    <button id="proxyBtn" onclick="toggleProxy()">🌐 下载代理</button>
   </div>
   <div id="filePanel" style="display:none">
     <div class="fhead">
@@ -327,6 +328,20 @@
       <div class="crow">
         <button id="cookieSave" onclick="saveCookies()">保存</button>
         <button id="cookieClear" onclick="clearCookies()">清除</button>
+      </div>
+    </div>
+  </div>
+  <div id="proxyPanel" style="display:none">
+    <div class="cookieBox">
+      <div class="ctitle">🌐 下载代理 <span id="proxyStatus" class="cstatus"></span></div>
+      <div class="ctip">搜索、下载、直接播放的流量都走这个代理出去。<br>
+        适合站点按 IP 封锁的场景（比如 PornHub 拦机房 IP 就报 410）。<br>
+        填你的 VPN/代理的 HTTP 或 SOCKS5 地址，例如
+        <code>socks5://127.0.0.1:1080</code>；留空则不走代理。</div>
+      <input type="text" id="proxyUrl" placeholder="socks5://127.0.0.1:1080 或 http://127.0.0.1:8080">
+      <div class="crow">
+        <button id="proxySave" onclick="saveProxy()">保存</button>
+        <button id="proxyClear" onclick="clearProxy()">清除</button>
       </div>
     </div>
   </div>
@@ -538,6 +553,40 @@ async function clearCookies() {
   if (!confirm("确定清除已保存的 Cookie 吗？")) return;
   await fetch("/api/cookies", {method: "DELETE"});
   refreshCookieStatus();
+}
+
+async function toggleProxy() {
+  const p = document.getElementById("proxyPanel");
+  if (p.style.display === "none") { await refreshProxyStatus(); p.style.display = "block"; }
+  else p.style.display = "none";
+}
+
+async function refreshProxyStatus() {
+  const r = await fetch("/api/proxy");
+  const j = await r.json();
+  const el = document.getElementById("proxyStatus");
+  el.textContent = j.has_proxy ? "● 已设置" : "○ 未设置";
+  el.className = "cstatus " + (j.has_proxy ? "on" : "off");
+}
+
+async function saveProxy() {
+  const url = document.getElementById("proxyUrl").value.trim();
+  if (!url) { alert("请先填写代理地址"); return; }
+  const r = await fetch("/api/proxy", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({url})
+  });
+  const j = await r.json();
+  if (!j.ok) { alert("保存失败: " + j.error); return; }
+  document.getElementById("proxyUrl").value = "";
+  refreshProxyStatus();
+  alert("代理已保存，搜索、下载、直接播放都会经此代理");
+}
+
+async function clearProxy() {
+  if (!confirm("确定清除已保存的代理吗？")) return;
+  await fetch("/api/proxy", {method: "DELETE"});
+  refreshProxyStatus();
 }
 
 function openPlayer(name) {

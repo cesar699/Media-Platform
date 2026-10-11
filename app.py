@@ -37,6 +37,8 @@ for _f in os.listdir(DL_DIR):
 jobs = {}  # job_id -> {status,total,done,files,errors,created}
 MAX_JOBS = 100
 COOKIE_FILE = os.path.join(BASE_DIR, "cookies.txt")
+PROXY_FILE = os.path.join(BASE_DIR, "proxy.txt")  # 下载代理地址, 如 socks5://127.0.0.1:1080
+PROXY_SCHEMES = ("http", "https", "socks5", "socks5h", "socks4", "socks4a")
 stream_cache = {}  # page_url -> {url, title, at}
 STREAM_TTL = 1800
 # gunicorn 用单 worker + 多线程 (gthread) 运行, 所有内存状态跨线程共享, 用锁保护
@@ -69,13 +71,47 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 
 
 def ydl_base_opts(extra=None):
-    """yt-dlp 通用选项: 有 Cookie 文件时自动带上。"""
+    """yt-dlp 通用选项: 有 Cookie 文件时自动带上, 设了代理也自动走代理。"""
     opts = {"quiet": True, "no_warnings": True}
     if os.path.isfile(COOKIE_FILE):
         opts["cookiefile"] = COOKIE_FILE
+    proxy = get_proxy()
+    if proxy:
+        opts["proxy"] = proxy
     if extra:
         opts.update(extra)
     return opts
+
+
+def get_proxy():
+    """返回已配置的代理地址 (如 socks5://127.0.0.1:1080), 未配置返回 None。"""
+    try:
+        with open(PROXY_FILE, encoding="utf-8") as f:
+            p = f.read().strip()
+    except OSError:
+        return None
+    return p or None
+
+
+def proxy_dict():
+    """requests 用的代理字典, 未配置返回 None。"""
+    p = get_proxy()
+    return {"http": p, "https": p} if p else None
+
+
+def validate_proxy(value):
+    """校验代理地址格式, 通过返回规范化后的地址。"""
+    value = (value or "").strip()
+    if not value:
+        raise ValueError("代理地址不能为空")
+    if len(value) > 256:
+        raise ValueError("代理地址过长")
+    parts = urllib.parse.urlsplit(value)
+    if (parts.scheme not in PROXY_SCHEMES or not parts.hostname
+            or not parts.port):
+        raise ValueError(
+            "格式不对, 示例: socks5://127.0.0.1:1080 或 http://127.0.0.1:8080")
+    return value
 
 
 def parse_cookies(domain, text):
@@ -250,6 +286,9 @@ def download_direct(url, title_hint="video"):
     if "douyin.com" in url or "iesdouyin.com" in url:
         headers["Referer"] = "https://www.iesdouyin.com/"
     s = requests.Session()
+    pd = proxy_dict()
+    if pd:
+        s.proxies = pd
     if os.path.isfile(COOKIE_FILE):
         try:
             jar = requests.cookies.MozillaCookieJar(COOKIE_FILE)
@@ -360,6 +399,29 @@ def api_cookies():
     except Exception:
         os.remove(COOKIE_FILE)
         return jsonify({"ok": False, "error": "Cookie 格式无法识别，请检查后重试"}), 400
+    return jsonify({"ok": True})
+
+
+@app.route("/api/proxy", methods=["GET", "POST", "DELETE"])
+def api_proxy():
+    """下载代理: 搜索/下载/直接播放的流量都经此代理出去 (绕过站点按 IP 封锁)。
+    POST {url}: 保存 (如 socks5://127.0.0.1:1080);
+    GET: 返回是否已设置 (不返回内容); DELETE: 清除。"""
+    if request.method == "GET":
+        return jsonify({"ok": True,
+                        "has_proxy": os.path.isfile(PROXY_FILE)})
+    if request.method == "DELETE":
+        if os.path.isfile(PROXY_FILE):
+            os.remove(PROXY_FILE)
+        return jsonify({"ok": True})
+    data = request.get_json(force=True)
+    try:
+        value = validate_proxy(data.get("url"))
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    with open(PROXY_FILE, "w", encoding="utf-8") as f:
+        f.write(value + "\n")
+    os.chmod(PROXY_FILE, 0o600)
     return jsonify({"ok": True})
 
 
@@ -474,7 +536,7 @@ def api_stream():
     if rng:
         headers["Range"] = rng
     try:
-        up = requests.get(direct_url, headers=headers,
+        up = requests.get(direct_url, headers=headers, proxies=proxy_dict(),
                           stream=True, timeout=(10, 60))
     except Exception as e:
         return jsonify({"ok": False,

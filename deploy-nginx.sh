@@ -30,7 +30,7 @@ else
 fi
 
 echo "== 安装到 $INSTALL_DIR (域名: $DOMAIN) =="
-# 重装保留已下载文件和 Cookie, 不丢数据
+# 重装保留已下载文件、Cookie 和代理设置, 不丢数据
 PRESERVE_DIR="/tmp/csmp-preserve"
 rm -rf "$PRESERVE_DIR"
 mkdir -p "$PRESERVE_DIR"
@@ -39,6 +39,9 @@ if [ -d "$INSTALL_DIR/downloads" ]; then
 fi
 if [ -f "$INSTALL_DIR/cookies.txt" ]; then
   cp -a "$INSTALL_DIR/cookies.txt" "$PRESERVE_DIR/"
+fi
+if [ -f "$INSTALL_DIR/proxy.txt" ]; then
+  cp -a "$INSTALL_DIR/proxy.txt" "$PRESERVE_DIR/"
 fi
 rm -rf "$INSTALL_DIR"
 mkdir -p "$INSTALL_DIR/downloads"
@@ -49,6 +52,9 @@ if [ -d "$PRESERVE_DIR/downloads" ]; then
 fi
 if [ -f "$PRESERVE_DIR/cookies.txt" ]; then
   cp -a "$PRESERVE_DIR/cookies.txt" "$INSTALL_DIR/"
+fi
+if [ -f "$PRESERVE_DIR/proxy.txt" ]; then
+  cp -a "$PRESERVE_DIR/proxy.txt" "$INSTALL_DIR/"
 fi
 rm -rf "$PRESERVE_DIR"
 chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"

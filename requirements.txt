@@ -3,3 +3,4 @@ yt-dlp
 gunicorn
 requests
 curl_cffi  # yt-dlp TLS 指纹伪装，反爬严格的站点需要
+PySocks  # 下载代理走 socks5 时 requests/yt-dlp 需要

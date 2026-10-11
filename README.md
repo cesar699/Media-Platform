@@ -15,6 +15,8 @@ Smooth Search Media Platform — 视频搜索下载站 (单用户个人使用)�
 - ✨ 尽量无水印模式
 - 📁 已下载文件管理 (▶ 在线预览 / ⬇ 存到本地 / 删除)
 - 🍪 会员 Cookie: 保存登录态后可搜/下/播会员视频 (Cookie 仅存服务器, 权限 600, 不进 Git)
+- 🌐 下载代理: 搜索/下载/直接播放的流量经代理出去, 绕过站点按 IP 封锁 (如 PornHub 拦机房 IP)
+  (代理地址仅存服务器, 权限 600, 不进 Git)
 - 🔒 Caddy 自动申请并续期 Let's Encrypt 证书
 
 > 会员视频需先点 🍪 会员 Cookie 保存登录态 (浏览器 F12 控制台输 `document.cookie` 复制,
