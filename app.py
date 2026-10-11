@@ -317,13 +317,35 @@ def api_cookies():
 @app.route("/api/files")
 def api_files():
     out = []
+    total = 0
     for f in os.listdir(DL_DIR):
         p = os.path.join(DL_DIR, f)
         if os.path.isfile(p):
-            out.append({"name": f, "size": os.path.getsize(p),
+            sz = os.path.getsize(p)
+            total += sz
+            out.append({"name": f, "size": sz,
                         "mtime": os.path.getmtime(p)})
     out.sort(key=lambda x: x["mtime"], reverse=True)
-    return jsonify({"ok": True, "files": out})
+    return jsonify({"ok": True, "files": out, "total_size": total})
+
+
+@app.route("/api/cleanup", methods=["POST"])
+def api_cleanup():
+    """删除 N 天前下载的文件 (默认 7 天), 防止磁盘被塞满。"""
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        days = int(data.get("days", 7))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "天数无效"}), 400
+    days = max(1, min(days, 365))
+    cutoff = time.time() - days * 86400
+    removed = 0
+    for f in os.listdir(DL_DIR):
+        p = os.path.join(DL_DIR, f)
+        if os.path.isfile(p) and os.path.getmtime(p) < cutoff:
+            os.remove(p)
+            removed += 1
+    return jsonify({"ok": True, "removed": removed})
 
 
 @app.route("/api/file/<name>", methods=["DELETE"])

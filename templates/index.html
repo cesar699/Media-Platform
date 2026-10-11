@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>光影 · 视频搜索下载</title>
+<link rel="icon" href="data:,">
+<title>CSMP · 畅搜媒体平台</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -168,7 +169,7 @@
   #filesBtn:hover { border-color: rgba(139,92,246,.5); }
   #filePanel { margin-top: 12px; }
   .frow {
-    display: flex; align-items: center; gap: 12px;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
     background: var(--card); border: 1px solid var(--line); border-radius: 12px;
     padding: 11px 15px; margin-bottom: 8px; font-size: 13.5px;
   }
@@ -188,6 +189,15 @@
   }
   .frow button.save:hover { background: rgba(34,211,238,.24); }
   .fempty { text-align: center; color: #55556e; padding: 26px 0; font-size: 14px; }
+  .fhead {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 4px 2px 10px; font-size: 13px; color: var(--mut);
+  }
+  #cleanBtn {
+    background: rgba(255,255,255,.06); color: var(--txt); border: 1px solid var(--line);
+    padding: 6px 14px; border-radius: 20px; font-size: 12.5px; cursor: pointer;
+  }
+  #cleanBtn:hover { border-color: rgba(139,92,246,.5); }
 
   /* Cookie 设置 */
   .filebar button { margin: 0 4px; }
@@ -259,8 +269,8 @@
 <div class="wrap">
 
   <div class="hero">
-    <div class="badge">VIDEO DOWNLOADER</div>
-    <h1>光影视频下载</h1>
+    <div class="badge">CSMP · SMOOTH SEARCH MEDIA PLATFORM</div>
+    <h1>畅搜媒体平台</h1>
     <p>粘贴链接或输入关键词 · 自动搜索 · 勾选一键下载</p>
   </div>
 
@@ -299,6 +309,10 @@
     <button id="cookieBtn" onclick="toggleCookies()">🍪 会员 Cookie</button>
   </div>
   <div id="filePanel" style="display:none">
+    <div class="fhead">
+      <span id="diskUsage"></span>
+      <button id="cleanBtn" onclick="cleanupOld()">🧹 清理 7 天前</button>
+    </div>
     <div id="fileList"></div>
   </div>
   <div id="cookiePanel" style="display:none">
@@ -390,16 +404,16 @@ function render() {
       </div>
       <div class="t">${escapeHtml(it.title)}</div>
       <div class="meta">${escapeHtml(it.uploader || "")}</div>
-      <div class="cplay"><button data-play>⚡ 直接播</button></div>`;
+      ${it.url ? `<div class="cplay"><button data-play>⚡ 直接播</button></div>` : ""}`;
     c.onclick = () => {
       it._sel = !it._sel;
       c.classList.toggle("sel", it._sel);
       refreshDlBtn();
     };
-    c.querySelector("[data-play]").onclick = (e) => {
+    c.querySelector("[data-play]")?.addEventListener("click", (e) => {
       e.stopPropagation();
       openStream(it.url, it.title);
-    };
+    });
     g.appendChild(c);
   });
   document.getElementById("actions").classList.toggle("show", items.length > 0);
@@ -444,6 +458,8 @@ async function toggleFiles() {
 async function loadFiles() {
   const r = await fetch("/api/files");
   const j = await r.json();
+  document.getElementById("diskUsage").textContent =
+    `共 ${j.files.length} 个文件，占用 ${fmtSize(j.total_size || 0)}`;
   const el = document.getElementById("fileList");
   el.innerHTML = "";
   if (!j.files.length) { el.innerHTML = '<div class="fempty">还没有下载文件</div>'; return; }
@@ -468,6 +484,17 @@ async function delFile(name) {
   const r = await fetch("/api/file/" + encodeURIComponent(name), {method: "DELETE"});
   const j = await r.json();
   if (!j.ok) alert("删除失败: " + j.error);
+  loadFiles();
+}
+
+async function cleanupOld() {
+  if (!confirm("确定删除 7 天前下载的文件吗？")) return;
+  const r = await fetch("/api/cleanup", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({days: 7})
+  });
+  const j = await r.json();
+  alert(j.ok ? `已清理 ${j.removed} 个文件` : "清理失败: " + j.error);
   loadFiles();
 }
 
