@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>光影 · 视频搜索下载</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #08080e;
+    --card: #12121c;
+    --line: rgba(255,255,255,.09);
+    --txt: #f0f0f8;
+    --mut: #9a9ab0;
+    --acc1: #8b5cf6;
+    --acc2: #22d3ee;
+  }
+  body {
+    font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--txt);
+    min-height: 100vh; padding: 0 20px 60px;
+    overflow-x: hidden;
+  }
+  /* 背景光斑 */
+  .orb { position: fixed; border-radius: 50%; filter: blur(110px);
+         opacity: .28; pointer-events: none; z-index: 0; }
+  .orb.a { width: 520px; height: 520px; background: #6d28d9; top: -160px; left: -120px; }
+  .orb.b { width: 460px; height: 460px; background: #0e7490; bottom: -180px; right: -120px; }
+  .wrap { max-width: 1020px; margin: 0 auto; position: relative; z-index: 1; }
+
+  /* Hero */
+  .hero { text-align: center; padding: 64px 0 34px; }
+  .hero .badge {
+    display: inline-block; font-size: 12px; letter-spacing: 3px; color: var(--mut);
+    border: 1px solid var(--line); border-radius: 999px; padding: 6px 16px;
+    margin-bottom: 18px; background: rgba(255,255,255,.03);
+  }
+  .hero h1 {
+    font-size: clamp(34px, 6vw, 58px); font-weight: 800; letter-spacing: 2px;
+    background: linear-gradient(120deg, #c4b5fd 0%, var(--acc1) 40%, var(--acc2) 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    margin-bottom: 12px;
+  }
+  .hero p { color: var(--mut); font-size: 15px; letter-spacing: 1px; }
+
+  /* 搜索栏 */
+  .searchbar {
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(255,255,255,.055);
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 7px 7px 7px 24px; margin: 26px auto 8px; max-width: 720px;
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    transition: box-shadow .25s, border-color .25s;
+  }
+  .searchbar:focus-within {
+    border-color: rgba(139,92,246,.55);
+    box-shadow: 0 0 0 4px rgba(139,92,246,.16), 0 10px 44px rgba(139,92,246,.22);
+  }
+  .searchbar input {
+    flex: 1; background: transparent; border: none; outline: none;
+    color: var(--txt); font-size: 16px; min-width: 0;
+  }
+  .searchbar input::placeholder { color: #5d5d78; }
+  .searchbar select {
+    background: rgba(255,255,255,.07); color: var(--txt); border: 1px solid var(--line);
+    border-radius: 999px; padding: 9px 12px; font-size: 14px; outline: none; cursor: pointer;
+  }
+  .searchbar select option { background: #15151f; }
+  .searchbar button {
+    border: none; cursor: pointer; font-size: 15px; font-weight: 700; color: #fff;
+    padding: 12px 30px; border-radius: 999px;
+    background: linear-gradient(120deg, var(--acc1), var(--acc2));
+    box-shadow: 0 6px 22px rgba(139,92,246,.4);
+    transition: transform .15s, box-shadow .2s;
+    white-space: nowrap;
+  }
+  .searchbar button:hover { transform: translateY(-1px); box-shadow: 0 10px 28px rgba(139,92,246,.5); }
+  .searchbar button:disabled { opacity: .55; transform: none; cursor: wait; }
+
+  #status { text-align: center; color: var(--mut); font-size: 13.5px; min-height: 24px; margin: 6px 0 4px; }
+
+  /* 结果卡片 */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; margin-top: 14px; }
+  .card {
+    background: var(--card); border: 1.5px solid var(--line); border-radius: 18px;
+    overflow: hidden; cursor: pointer; position: relative;
+    transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
+  }
+  .card:hover { transform: translateY(-6px); box-shadow: 0 18px 44px rgba(0,0,0,.5); }
+  .card.sel { border-color: var(--acc1); box-shadow: 0 0 0 3px rgba(139,92,246,.25), 0 18px 44px rgba(0,0,0,.5); }
+  .thumb { position: relative; aspect-ratio: 16/9; background: #0a0a12; overflow: hidden; }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .35s; }
+  .card:hover .thumb img { transform: scale(1.06); }
+  .dur {
+    position: absolute; right: 10px; bottom: 10px; font-size: 12px; font-weight: 600;
+    background: rgba(0,0,0,.68); backdrop-filter: blur(4px);
+    padding: 3px 9px; border-radius: 999px; color: #fff;
+  }
+  .check {
+    position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; border-radius: 50%;
+    background: rgba(0,0,0,.55); backdrop-filter: blur(4px);
+    border: 2px solid rgba(255,255,255,.4);
+    display: flex; align-items: center; justify-content: center;
+    transition: all .2s; font-size: 16px; font-weight: 800; color: transparent;
+  }
+  .card.sel .check {
+    background: linear-gradient(135deg, var(--acc1), var(--acc2));
+    border-color: transparent; color: #fff;
+    box-shadow: 0 4px 14px rgba(139,92,246,.55);
+  }
+  .card.sel .check::after { content: "✓"; }
+  .card .t { padding: 12px 14px 4px; font-size: 14px; line-height: 1.5;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .card .meta { color: var(--mut); font-size: 12.5px; padding: 6px 14px 13px; }
+
+  .empty { text-align: center; color: #55556e; padding: 70px 0; font-size: 15px; }
+  .empty .big { font-size: 46px; margin-bottom: 14px; }
+
+  /* 操作区 */
+  .actions {
+    display: none; align-items: center; gap: 12px; margin: 26px 0 6px;
+    position: sticky; bottom: 18px; z-index: 5; flex-wrap: wrap;
+    background: rgba(14,14,22,.82); backdrop-filter: blur(16px);
+    border: 1px solid var(--line); border-radius: 18px; padding: 14px 18px;
+    box-shadow: 0 18px 50px rgba(0,0,0,.5);
+  }
+  .actions.show { display: flex; }
+  #allBtn {
+    background: rgba(255,255,255,.07); color: var(--txt); border: 1px solid var(--line);
+    padding: 11px 20px; border-radius: 12px; font-size: 14px; cursor: pointer;
+  }
+  #dlBtn {
+    border: none; cursor: pointer; font-size: 15px; font-weight: 700; color: #fff;
+    padding: 12px 34px; border-radius: 12px;
+    background: linear-gradient(120deg, var(--acc1), var(--acc2));
+    box-shadow: 0 6px 22px rgba(139,92,246,.4);
+  }
+  #dlBtn:disabled { opacity: .55; cursor: wait; }
+  #prog { font-size: 14px; color: var(--mut); }
+  .pbar { flex: 1; height: 8px; background: rgba(255,255,255,.08); border-radius: 99px; overflow: hidden; min-width: 80px; }
+  .pbar i { display: block; height: 100%; width: 0;
+    background: linear-gradient(90deg, var(--acc1), var(--acc2)); border-radius: 99px; transition: width .4s; }
+
+  /* 清晰度 + 去水印 */
+  #quality {
+    background: rgba(255,255,255,.07); color: var(--txt); border: 1px solid var(--line);
+    padding: 11px 12px; border-radius: 12px; font-size: 14px; outline: none; cursor: pointer;
+  }
+  #quality option { background: #15151f; }
+  .clean-toggle {
+    display: flex; align-items: center; gap: 7px; font-size: 14px; color: var(--mut);
+    cursor: pointer; user-select: none; white-space: nowrap;
+  }
+  .clean-toggle input { width: 18px; height: 18px; accent-color: var(--acc1); cursor: pointer; }
+
+  /* 文件管理 */
+  .filebar { margin: 26px 0 4px; text-align: center; }
+  #filesBtn {
+    background: rgba(255,255,255,.06); color: var(--txt); border: 1px solid var(--line);
+    padding: 11px 26px; border-radius: 999px; font-size: 14px; cursor: pointer;
+    transition: border-color .2s;
+  }
+  #filesBtn:hover { border-color: rgba(139,92,246,.5); }
+  #filePanel { margin-top: 12px; }
+  .frow {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 11px 15px; margin-bottom: 8px; font-size: 13.5px;
+  }
+  .frow .fname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .frow .fsize { color: var(--mut); font-size: 12.5px; white-space: nowrap; }
+  .frow button {
+    background: rgba(255,80,80,.12); color: #ff7b7b; border: 1px solid rgba(255,80,80,.3);
+    padding: 6px 14px; border-radius: 8px; font-size: 13px; cursor: pointer; white-space: nowrap;
+  }
+  .frow button:hover { background: rgba(255,80,80,.22); }
+  .fempty { text-align: center; color: #55556e; padding: 26px 0; font-size: 14px; }
+
+  #doneList { list-style: none; margin-top: 16px; font-size: 13.5px; }
+  #doneList li {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 10px 14px; margin-bottom: 8px; color: var(--mut);
+  }
+  footer { text-align: center; color: #44445e; font-size: 12px; margin-top: 46px; letter-spacing: 1px; }
+</style>
+</head>
+<body>
+<div class="orb a"></div><div class="orb b"></div>
+<div class="wrap">
+
+  <div class="hero">
+    <div class="badge">VIDEO DOWNLOADER</div>
+    <h1>光影视频下载</h1>
+    <p>粘贴链接或输入关键词 · 自动搜索 · 勾选一键下载</p>
+  </div>
+
+  <div class="searchbar">
+    <input type="text" id="q" placeholder="粘贴视频 / 列表 / 频道链接，或输入关键词…">
+    <select id="site">
+      <option value="youtube">YouTube</option>
+      <option value="pornhub">PornHub</option>
+    </select>
+    <button id="sBtn" onclick="doSearch()">搜索</button>
+  </div>
+  <div id="status"></div>
+
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty"><div class="big">🔍</div>输入关键词或粘贴链接，开始探索视频</div>
+
+  <div class="actions" id="actions">
+    <button id="allBtn" onclick="toggleAll()">全选</button>
+    <select id="quality" title="清晰度">
+      <option value="best">最高画质</option>
+      <option value="1080">1080p</option>
+      <option value="720">720p</option>
+      <option value="480">480p</option>
+    </select>
+    <label class="clean-toggle" title="尽量获取无水印版本">
+      <input type="checkbox" id="clean"> 尽量无水印
+    </label>
+    <button id="dlBtn" onclick="doDownload()">下载选中</button>
+    <div class="pbar"><i id="pfill"></i></div>
+    <span id="prog"></span>
+  </div>
+  <ul id="doneList"></ul>
+
+  <div class="filebar">
+    <button id="filesBtn" onclick="toggleFiles()">📁 已下载文件</button>
+  </div>
+  <div id="filePanel" style="display:none">
+    <div id="fileList"></div>
+  </div>
+
+  <footer>仅供个人学习与备份自己的作品使用</footer>
+</div>
+
+<script>
+let items = [];
+let timer = null;
+
+function fmt(d) {
+  if (d === null || d === undefined) return "";
+  d = Math.round(d);
+  return Math.floor(d / 60) + ":" + String(d % 60).padStart(2, "0");
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
+}
+function setStatus(s) { document.getElementById("status").textContent = s; }
+function selCount() { return items.filter(i => i._sel).length; }
+function refreshDlBtn() {
+  const n = selCount();
+  document.getElementById("dlBtn").textContent = n ? `下载选中 (${n})` : "下载选中";
+}
+
+async function doSearch() {
+  const q = document.getElementById("q").value.trim();
+  const site = document.getElementById("site").value;
+  if (!q) return;
+  setStatus("正在搜索…");
+  document.getElementById("sBtn").disabled = true;
+  try {
+    const r = await fetch("/api/search", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({query: q, site})
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error);
+    items = j.items;
+    render();
+    setStatus(j.count ? `找到 ${j.count} 个视频，点击卡片勾选` : "没有找到视频，换个关键词试试");
+  } catch (e) { setStatus("出错: " + e.message); }
+  document.getElementById("sBtn").disabled = false;
+}
+
+function render() {
+  const g = document.getElementById("grid");
+  g.innerHTML = "";
+  document.getElementById("empty").style.display = items.length ? "none" : "block";
+  items.forEach((it) => {
+    const c = document.createElement("div");
+    c.className = "card" + (it._sel ? " sel" : "");
+    c.innerHTML = `
+      <div class="thumb">
+        ${it.thumbnail ? `<img loading="lazy" src="${it.thumbnail}" onerror="this.remove()">` : ""}
+        ${it.duration ? `<span class="dur">${fmt(it.duration)}</span>` : ""}
+        <div class="check"></div>
+      </div>
+      <div class="t">${escapeHtml(it.title)}</div>
+      <div class="meta">${escapeHtml(it.uploader || "")}</div>`;
+    c.onclick = () => {
+      it._sel = !it._sel;
+      c.classList.toggle("sel", it._sel);
+      refreshDlBtn();
+    };
+    g.appendChild(c);
+  });
+  document.getElementById("actions").classList.toggle("show", items.length > 0);
+  refreshDlBtn();
+}
+
+function toggleAll() {
+  const all = items.length && items.every(i => i._sel);
+  items.forEach(i => i._sel = !all);
+  render();
+}
+
+async function doDownload() {
+  const sel = items.filter(i => i._sel);
+  if (!sel.length) { setStatus("请先勾选视频"); return; }
+  document.getElementById("dlBtn").disabled = true;
+  document.getElementById("doneList").innerHTML = "";
+  const quality = document.getElementById("quality").value;
+  const clean = document.getElementById("clean").checked;
+  const r = await fetch("/api/download", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({items: sel.map(i => ({url: i.url, title: i.title})), quality, clean})
+  });
+  const j = await r.json();
+  if (!j.ok) { setStatus("出错: " + j.error); document.getElementById("dlBtn").disabled = false; return; }
+  setStatus((clean ? "尽量无水印 · " : "") + "下载中…");
+  poll(j.job);
+}
+
+function fmtSize(b) {
+  if (b >= 1e9) return (b / 1e9).toFixed(2) + " GB";
+  if (b >= 1e6) return (b / 1e6).toFixed(1) + " MB";
+  return Math.max(1, Math.round(b / 1e3)) + " KB";
+}
+
+async function toggleFiles() {
+  const p = document.getElementById("filePanel");
+  if (p.style.display === "none") { await loadFiles(); p.style.display = "block"; }
+  else p.style.display = "none";
+}
+
+async function loadFiles() {
+  const r = await fetch("/api/files");
+  const j = await r.json();
+  const el = document.getElementById("fileList");
+  el.innerHTML = "";
+  if (!j.files.length) { el.innerHTML = '<div class="fempty">还没有下载文件</div>'; return; }
+  j.files.forEach(f => {
+    const d = document.createElement("div");
+    d.className = "frow";
+    const nm = document.createElement("span"); nm.className = "fname"; nm.textContent = f.name;
+    const sz = document.createElement("span"); sz.className = "fsize"; sz.textContent = fmtSize(f.size);
+    const btn = document.createElement("button"); btn.textContent = "删除";
+    btn.onclick = () => delFile(f.name);
+    d.append(nm, sz, btn);
+    el.appendChild(d);
+  });
+}
+
+async function delFile(name) {
+  if (!confirm("确定删除这个文件吗？")) return;
+  const r = await fetch("/api/file/" + encodeURIComponent(name), {method: "DELETE"});
+  const j = await r.json();
+  if (!j.ok) alert("删除失败: " + j.error);
+  loadFiles();
+}
+
+async function poll(jid) {
+  clearInterval(timer);
+  timer = setInterval(async () => {
+    const r = await fetch("/api/job/" + jid);
+    const j = await r.json();
+    const pct = j.total ? Math.round(j.done / j.total * 100) : 0;
+    document.getElementById("pfill").style.width = pct + "%";
+    document.getElementById("prog").textContent = `${j.done}/${j.total}`;
+    if (j.status === "done") {
+      clearInterval(timer);
+      document.getElementById("dlBtn").disabled = false;
+      setStatus(`完成 ${j.done}/${j.total}` + (j.errors.length ? `，失败 ${j.errors.length} 个` : ""));
+      const ul = document.getElementById("doneList");
+      j.files.forEach(f => {
+        const li = document.createElement("li"); li.textContent = "✅ " + f; ul.appendChild(li);
+      });
+      j.errors.forEach(e => {
+        const li = document.createElement("li"); li.textContent = "❌ " + e; ul.appendChild(li);
+      });
+    }
+  }, 1500);
+}
+
+document.getElementById("q").addEventListener("keydown", e => {
+  if (e.key === "Enter") doSearch();
+});
+</script>
+</body>
+</html>

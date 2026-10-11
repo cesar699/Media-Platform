@@ -1,0 +1,7 @@
+# CSMP 畅搜媒体平台 — 自动 HTTPS 配置
+# Caddy 会自动向 Let's Encrypt 申请并续期证书, 零配置。
+# 把下面第一行的域名换成你自己的 (确保该域名已解析到本机 IP)。
+
+{$DOMAIN:dl.csmp.si} {
+	reverse_proxy 127.0.0.1:5000
+}
