@@ -7,6 +7,7 @@ video-dl-web: 网页版视频搜索下载器 (单用户个人使用)。
 流程: 粘贴链接或输关键词 -> 自动搜出视频列表 -> 勾选 -> 下载。
 """
 import json
+import mimetypes
 import os
 import re
 import threading
@@ -16,7 +17,7 @@ import urllib.request
 import uuid
 
 import yt_dlp
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_file
 
 app = Flask(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -229,6 +230,19 @@ def api_del_file(name):
         return jsonify({"ok": False, "error": "文件不存在"}), 404
     os.remove(p)
     return jsonify({"ok": True})
+
+
+@app.route("/api/watch/<name>")
+def api_watch(name):
+    """在线预览: 以流式返回视频文件 (支持 Range 拖进度)。"""
+    if not name or "/" in name or "\\" in name or name.startswith("."):
+        return jsonify({"ok": False, "error": "非法文件名"}), 400
+    p = os.path.join(DL_DIR, name)
+    if not os.path.isfile(p):
+        return jsonify({"ok": False, "error": "文件不存在"}), 404
+    mt, _ = mimetypes.guess_type(p)
+    return send_file(p, mimetype=mt or "video/mp4",
+                     as_attachment=False, conditional=True)
 
 
 if __name__ == "__main__":

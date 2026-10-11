@@ -174,7 +174,35 @@
     padding: 6px 14px; border-radius: 8px; font-size: 13px; cursor: pointer; white-space: nowrap;
   }
   .frow button:hover { background: rgba(255,80,80,.22); }
+  .frow button.play {
+    background: rgba(139,92,246,.14); color: #c4b5fd; border: 1px solid rgba(139,92,246,.35);
+  }
+  .frow button.play:hover { background: rgba(139,92,246,.28); }
   .fempty { text-align: center; color: #55556e; padding: 26px 0; font-size: 14px; }
+
+  /* 播放器弹窗 */
+  #playerModal {
+    display: none; position: fixed; inset: 0; z-index: 50;
+    background: rgba(4,4,10,.88); backdrop-filter: blur(8px);
+    align-items: center; justify-content: center; padding: 24px;
+  }
+  #playerModal.open { display: flex; }
+  .playerBox {
+    width: min(960px, 100%); background: #101018;
+    border: 1px solid var(--line); border-radius: 18px; overflow: hidden;
+    box-shadow: 0 30px 80px rgba(0,0,0,.6);
+  }
+  .playerHead {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 18px; border-bottom: 1px solid var(--line);
+  }
+  .playerHead .ptitle { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .playerHead button {
+    background: rgba(255,255,255,.07); color: #fff; border: 1px solid var(--line);
+    width: 32px; height: 32px; border-radius: 50%; font-size: 15px; cursor: pointer;
+    flex-shrink: 0; margin-left: 12px;
+  }
+  .playerBox video { width: 100%; max-height: 70vh; background: #000; display: block; }
 
   #doneList { list-style: none; margin-top: 16px; font-size: 13.5px; }
   #doneList li {
@@ -229,6 +257,16 @@
   </div>
   <div id="filePanel" style="display:none">
     <div id="fileList"></div>
+  </div>
+
+  <div id="playerModal">
+    <div class="playerBox">
+      <div class="playerHead">
+        <span class="ptitle" id="playerTitle"></span>
+        <button onclick="closePlayer()">✕</button>
+      </div>
+      <video id="player" controls playsinline></video>
+    </div>
   </div>
 
   <footer>仅供个人学习与备份自己的作品使用</footer>
@@ -352,9 +390,11 @@ async function loadFiles() {
     d.className = "frow";
     const nm = document.createElement("span"); nm.className = "fname"; nm.textContent = f.name;
     const sz = document.createElement("span"); sz.className = "fsize"; sz.textContent = fmtSize(f.size);
+    const pv = document.createElement("button"); pv.className = "play"; pv.textContent = "▶ 预览";
+    pv.onclick = () => openPlayer(f.name);
     const btn = document.createElement("button"); btn.textContent = "删除";
     btn.onclick = () => delFile(f.name);
-    d.append(nm, sz, btn);
+    d.append(nm, sz, pv, btn);
     el.appendChild(d);
   });
 }
@@ -366,6 +406,29 @@ async function delFile(name) {
   if (!j.ok) alert("删除失败: " + j.error);
   loadFiles();
 }
+
+function openPlayer(name) {
+  document.getElementById("playerTitle").textContent = name;
+  const v = document.getElementById("player");
+  v.src = "/api/watch/" + encodeURIComponent(name);
+  document.getElementById("playerModal").classList.add("open");
+  v.play().catch(() => {});
+}
+
+function closePlayer() {
+  const v = document.getElementById("player");
+  v.pause();
+  v.removeAttribute("src");
+  v.load();
+  document.getElementById("playerModal").classList.remove("open");
+}
+
+document.getElementById("playerModal").addEventListener("click", e => {
+  if (e.target.id === "playerModal") closePlayer();
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") closePlayer();
+});
 
 async function poll(jid) {
   clearInterval(timer);
