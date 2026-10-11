@@ -40,6 +40,19 @@ curl -fsSL https://raw.githubusercontent.com/cesar699/Media-Platform/main/deploy
 - Caddy 自动完成 Let's Encrypt 证书申请与续期, 零手动操作
 - 需放行 80/443 端口 (含云厂商安全组)
 
+## 已有 nginx 共存部署 (证书走 acme.sh)
+
+如果服务器上已有 nginx 占用 80/443 (如 VPN 代理), 用共存版:
+只部署 CSMP 后端, 写 nginx 反代配置, 不装 Caddy、不碰现有站点和证书。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/cesar699/Media-Platform/main/deploy-nginx.sh | sudo bash
+```
+
+- 首次运行只配好 80 端口, 按提示用 acme.sh 签发证书后重跑一遍自动配好 443
+- 已有证书可直接带上: `... | sudo SSL_CERT=/path/x.cer SSL_KEY=/path/x.key bash`
+- 反代已针对视频流优化 (关缓冲、长超时、透传 X-Forwarded-For)
+
 ## 说明
 
 仅供个人学习与备份自己的作品使用。
