@@ -109,9 +109,14 @@
     box-shadow: 0 4px 14px rgba(139,92,246,.55);
   }
   .card.sel .check::after { content: "✓"; }
-  .card .t { padding: 12px 14px 4px; font-size: 14px; line-height: 1.5;
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .card .meta { color: var(--mut); font-size: 12.5px; padding: 6px 14px 13px; }
+  .card .t { padding: 12px 14px 4px; font-size: 14px; line-height: 1.5;    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .card .meta { color: var(--mut); font-size: 12.5px; padding: 6px 14px 2px; }
+  .card .cplay { padding: 8px 14px 13px; }
+  .card .cplay button {
+    background: rgba(34,211,238,.12); color: #67e8f9; border: 1px solid rgba(34,211,238,.32);
+    padding: 6px 14px; border-radius: 20px; font-size: 12.5px; cursor: pointer;
+  }
+  .card .cplay button:hover { background: rgba(34,211,238,.26); }
 
   .empty { text-align: center; color: #55556e; padding: 70px 0; font-size: 15px; }
   .empty .big { font-size: 46px; margin-bottom: 14px; }
@@ -384,11 +389,16 @@ function render() {
         <div class="check"></div>
       </div>
       <div class="t">${escapeHtml(it.title)}</div>
-      <div class="meta">${escapeHtml(it.uploader || "")}</div>`;
+      <div class="meta">${escapeHtml(it.uploader || "")}</div>
+      <div class="cplay"><button data-play>⚡ 直接播</button></div>`;
     c.onclick = () => {
       it._sel = !it._sel;
       c.classList.toggle("sel", it._sel);
       refreshDlBtn();
+    };
+    c.querySelector("[data-play]").onclick = (e) => {
+      e.stopPropagation();
+      openStream(it.url, it.title);
     };
     g.appendChild(c);
   });
@@ -497,9 +507,28 @@ async function clearCookies() {
 }
 
 function openPlayer(name) {
-  document.getElementById("playerTitle").textContent = name;
+  playSrc(name, "/api/watch/" + encodeURIComponent(name));
+}
+
+async function openStream(url, title) {
+  document.getElementById("playerTitle").textContent = "解析中…";
+  document.getElementById("playerModal").classList.add("open");
+  try {
+    const r = await fetch("/api/stream?check=1&url=" + encodeURIComponent(url));
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || "解析失败");
+    playSrc(j.title || title || "直接播放",
+            "/api/stream?url=" + encodeURIComponent(url));
+  } catch (e) {
+    closePlayer();
+    alert("直接播放失败: " + e.message + "\n可以改用勾选下载到服务器再看");
+  }
+}
+
+function playSrc(title, src) {
+  document.getElementById("playerTitle").textContent = title;
   const v = document.getElementById("player");
-  v.src = "/api/watch/" + encodeURIComponent(name);
+  v.src = src;
   document.getElementById("playerModal").classList.add("open");
   v.play().catch(() => {});
 }

@@ -17,7 +17,7 @@ import urllib.request
 import uuid
 
 import yt_dlp
-from flask import Flask, jsonify, render_template, request, send_file
+from flask import Flask, jsonify, render_template, request, send_file, Response, stream_with_context
 
 app = Flask(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -27,6 +27,10 @@ os.makedirs(DL_DIR, exist_ok=True)
 jobs = {}  # job_id -> {status,total,done,files,errors,created}
 MAX_JOBS = 100
 COOKIE_FILE = os.path.join(BASE_DIR, "cookies.txt")
+stream_cache = {}  # page_url -> {url, title, at}
+STREAM_TTL = 1800
+UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+      "(KHTML, like Gecko) Chrome/120.0 Safari/537.36")
 
 
 def ydl_base_opts(extra=None):
@@ -310,6 +314,78 @@ def api_watch(name):
     as_attach = request.args.get("download") == "1"
     return send_file(p, mimetype=mt or "video/mp4",
                      as_attachment=as_attach, conditional=True)
+
+
+def get_direct_stream(page_url):
+    """解析视频直链 (带 30 分钟缓存)。返回 (direct_url, title)。"""
+    now = time.time()
+    hit = stream_cache.get(page_url)
+    if hit and now - hit["at"] < STREAM_TTL:
+        return hit["url"], hit["title"]
+    with yt_dlp.YoutubeDL(ydl_base_opts({"skip_download": True})) as ydl:
+        info = ydl.extract_info(page_url, download=False)
+    if not info or info.get("_type") == "playlist":
+        raise ValueError("不支持播放列表直连，请先下载")
+    fmts = [f for f in info.get("formats", []) if f.get("url")]
+    both = [f for f in fmts
+            if f.get("vcodec") != "none" and f.get("acodec") != "none"]
+    pool = both or fmts
+    if not pool:
+        raise ValueError("解析不到可播放的视频流")
+    pool.sort(key=lambda f: (f.get("height") or 0, f.get("tbr") or 0))
+    direct = pool[-1]["url"]
+    title = info.get("title", "视频")
+    # 缓存裁剪，防止无限增长
+    if len(stream_cache) > 200:
+        stream_cache.clear()
+    stream_cache[page_url] = {"url": direct, "title": title, "at": now}
+    return direct, title
+
+
+@app.route("/api/stream")
+def api_stream():
+    """直接播放: 解析直链后由服务器实时转发视频流给浏览器 (支持 Range 拖进度)。
+    会员视频需先在 🍪 里保存 Cookie。"""
+    import requests
+    page_url = (request.args.get("url") or "").strip()
+    if not page_url.startswith(("http://", "https://")):
+        return jsonify({"ok": False, "error": "无效的视频链接"}), 400
+    try:
+        direct_url, title = get_direct_stream(page_url)
+    except Exception as e:
+        return jsonify({"ok": False,
+                        "error": "解析失败: " + str(e)[:200]}), 502
+    if request.args.get("check") == "1":
+        return jsonify({"ok": True, "title": title})
+    headers = {"User-Agent": UA}
+    rng = request.headers.get("Range")
+    if rng:
+        headers["Range"] = rng
+    try:
+        up = requests.get(direct_url, headers=headers,
+                          stream=True, timeout=30)
+    except Exception as e:
+        return jsonify({"ok": False,
+                        "error": "上游连接失败: " + str(e)[:200]}), 502
+    if up.status_code >= 400:
+        return jsonify({"ok": False,
+                        "error": f"上游返回 {up.status_code}"}), 502
+    pass_through = {}
+    for k in ("Content-Type", "Content-Length",
+              "Content-Range", "Accept-Ranges"):
+        if k in up.headers:
+            pass_through[k] = up.headers[k]
+
+    def gen():
+        try:
+            for chunk in up.iter_content(chunk_size=65536):
+                if chunk:
+                    yield chunk
+        finally:
+            up.close()
+
+    return Response(stream_with_context(gen()),
+                    status=up.status_code, headers=pass_through)
 
 
 if __name__ == "__main__":
