@@ -356,7 +356,7 @@ async function doSearch() {
   const btn = document.getElementById("sBtn");
   btn.disabled = true;
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 120000);
+  const searchTimer = setTimeout(() => ctrl.abort(), 120000);
   try {
     const r = await fetch("/api/search", {
       method: "POST", headers: {"Content-Type": "application/json"},
@@ -370,7 +370,7 @@ async function doSearch() {
   } catch (e) {
     setStatus("出错: " + (e.name === "AbortError" ? "搜索超时，请重试" : e.message));
   } finally {
-    clearTimeout(timer);
+    clearTimeout(searchTimer);
     btn.disabled = false;
   }
 }
@@ -516,6 +516,7 @@ async function openStream(url, title) {
   try {
     const r = await fetch("/api/stream?check=1&url=" + encodeURIComponent(url));
     const j = await r.json();
+    if (!document.getElementById("playerModal").classList.contains("open")) return;
     if (!j.ok) throw new Error(j.error || "解析失败");
     playSrc(j.title || title || "直接播放",
             "/api/stream?url=" + encodeURIComponent(url));
@@ -546,6 +547,12 @@ document.getElementById("playerModal").addEventListener("click", e => {
 });
 document.addEventListener("keydown", e => {
   if (e.key === "Escape") closePlayer();
+});
+document.getElementById("player").addEventListener("error", () => {
+  const v = document.getElementById("player");
+  if (v.getAttribute("src")) {
+    document.getElementById("playerTitle").textContent = "播放出错，可关闭重试或改用下载";
+  }
 });
 
 async function poll(jid) {

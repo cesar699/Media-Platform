@@ -50,7 +50,9 @@ After=network.target
 [Service]
 User=$SERVICE_USER
 WorkingDirectory=$APP_DIR
-ExecStart=/usr/local/bin/gunicorn -w 2 -b 127.0.0.1:5000 app:app
+# 单 worker + 多线程: 任务状态存在内存中, 多 worker 会导致查不到任务;
+# gthread 让长连接 (视频推流) 不阻塞其他请求
+ExecStart=/usr/local/bin/gunicorn -w 1 -k gthread --threads 8 -b 127.0.0.1:5000 app:app
 Restart=always
 RestartSec=5
 

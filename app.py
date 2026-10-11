@@ -15,7 +15,10 @@ import time
 import urllib.parse
 import urllib.request
 import uuid
+import http.cookiejar
 
+import requests
+import requests.cookies
 import yt_dlp
 from flask import Flask, jsonify, render_template, request, send_file, Response, stream_with_context
 
@@ -29,6 +32,8 @@ MAX_JOBS = 100
 COOKIE_FILE = os.path.join(BASE_DIR, "cookies.txt")
 stream_cache = {}  # page_url -> {url, title, at}
 STREAM_TTL = 1800
+# gunicorn 用单 worker + 多线程 (gthread) 运行, 所有内存状态跨线程共享, 用锁保护
+state_lock = threading.RLock()
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0 Safari/537.36")
 
@@ -75,15 +80,22 @@ def parse_cookies(domain, text):
     return "# Netscape HTTP Cookie File\n" + "\n".join(lines) + "\n"
 
 
+def validate_cookie_file(path):
+    """校验 Cookie 文件可被正常加载, 坏文件会导致所有 yt-dlp 调用失败。"""
+    jar = http.cookiejar.MozillaCookieJar(path)
+    jar.load(ignore_discard=True, ignore_expires=True)
+
+
 def prune_jobs():
     """防止 jobs 无限增长: 超过上限时先清掉最早完成的。"""
-    if len(jobs) <= MAX_JOBS:
-        return
-    done = sorted(
-        ((jid, j) for jid, j in jobs.items() if j["status"] == "done"),
-        key=lambda kv: kv[1].get("created", 0))
-    for jid, _ in done[:len(jobs) - MAX_JOBS]:
-        jobs.pop(jid, None)
+    with state_lock:
+        if len(jobs) <= MAX_JOBS:
+            return
+        done = sorted(
+            ((jid, j) for jid, j in jobs.items() if j["status"] == "done"),
+            key=lambda kv: kv[1].get("created", 0))
+        for jid, _ in done[:len(jobs) - MAX_JOBS]:
+            jobs.pop(jid, None)
 
 QUALITY_FORMATS = {
     "best": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
@@ -138,6 +150,15 @@ def search_videos(query, site):
 def run_job(jid, items, quality="best", clean=False):
     st = jobs[jid]
     fmt = QUALITY_FORMATS.get(quality, QUALITY_FORMATS["best"])
+
+    def record(ok_file=None, err=None):
+        with state_lock:
+            if ok_file:
+                st["files"].append(ok_file)
+            if err:
+                st["errors"].append(err)
+            st["done"] += 1
+
     for it in items:
         url = it["url"]
         try:
@@ -146,8 +167,7 @@ def run_job(jid, items, quality="best", clean=False):
                 if hit:
                     link, title = hit
                     download_direct(link, title)
-                    st["files"].append(title + " (无水印)")
-                    st["done"] += 1
+                    record(ok_file=title + " (无水印)")
                     continue
             opts = ydl_base_opts({
                 "format": fmt,
@@ -155,11 +175,11 @@ def run_job(jid, items, quality="best", clean=False):
                 "merge_output_format": "mp4"})
             with yt_dlp.YoutubeDL(opts) as ydl:
                 ydl.extract_info(url, download=True)
-            st["files"].append(it.get("title", ""))
+            record(ok_file=it.get("title", ""))
         except Exception as e:  # noqa: BLE001 - report per-item failure
-            st["errors"].append(f'{it.get("title", "")}: {e}')
-        st["done"] += 1
-    st["status"] = "done"
+            record(err=f'{it.get("title", "")}: {e}')
+    with state_lock:
+        st["status"] = "done"
 
 
 def try_douyin_nowm(url):
@@ -189,18 +209,25 @@ def try_douyin_nowm(url):
 
 
 def download_direct(url, title_hint="video"):
-    """直接下载文件 URL (用于无水印直链)。失败时清理残留文件。"""
+    """直接下载文件 URL (用于无水印直链)。带上 Cookie 会话, 失败时清理残留文件。"""
     safe = re.sub(r'[\\/:*?"<>|]', "_", title_hint)[:60] or "video"
     dest = os.path.join(DL_DIR, safe + ".mp4")
     headers = {"User-Agent": UA_MOBILE, "Referer": "https://www.iesdouyin.com/"}
-    req = urllib.request.Request(url, headers=headers)
+    s = requests.Session()
+    if os.path.isfile(COOKIE_FILE):
+        try:
+            jar = requests.cookies.MozillaCookieJar(COOKIE_FILE)
+            jar.load(ignore_discard=True, ignore_expires=True)
+            s.cookies = jar
+        except Exception:
+            pass
     try:
-        with urllib.request.urlopen(req, timeout=120) as r, open(dest, "wb") as f:
-            while True:
-                chunk = r.read(1024 * 256)
-                if not chunk:
-                    break
-                f.write(chunk)
+        with s.get(url, headers=headers, stream=True, timeout=120) as r:
+            r.raise_for_status()
+            with open(dest, "wb") as f:
+                for chunk in r.iter_content(256 * 1024):
+                    if chunk:
+                        f.write(chunk)
     except Exception:
         if os.path.exists(dest):
             os.remove(dest)
@@ -237,11 +264,12 @@ def api_download():
     quality = data.get("quality") or "best"
     clean = bool(data.get("clean"))
     jid = uuid.uuid4().hex[:12]
-    jobs[jid] = {"status": "running", "total": len(items), "done": 0,
-                 "files": [], "errors": [],
-                 "quality": quality, "clean": clean,
-                 "created": time.time()}
-    prune_jobs()
+    with state_lock:
+        jobs[jid] = {"status": "running", "total": len(items), "done": 0,
+                     "files": [], "errors": [],
+                     "quality": quality, "clean": clean,
+                     "created": time.time()}
+        prune_jobs()
     threading.Thread(target=run_job, args=(jid, items, quality, clean),
                      daemon=True).start()
     return jsonify({"ok": True, "job": jid, "total": len(items)})
@@ -249,10 +277,13 @@ def api_download():
 
 @app.route("/api/job/<jid>")
 def api_job(jid):
-    st = jobs.get(jid)
-    if not st:
+    with state_lock:
+        st = jobs.get(jid)
+        snap = ({k: (list(v) if isinstance(v, list) else v)
+                 for k, v in st.items()} if st else None)
+    if not snap:
         return jsonify({"ok": False, "error": "任务不存在"}), 404
-    return jsonify({"ok": True, **st})
+    return jsonify({"ok": True, **snap})
 
 
 @app.route("/api/cookies", methods=["GET", "POST", "DELETE"])
@@ -275,6 +306,11 @@ def api_cookies():
     with open(COOKIE_FILE, "w", encoding="utf-8") as f:
         f.write(content)
     os.chmod(COOKIE_FILE, 0o600)
+    try:
+        validate_cookie_file(COOKIE_FILE)
+    except Exception:
+        os.remove(COOKIE_FILE)
+        return jsonify({"ok": False, "error": "Cookie 格式无法识别，请检查后重试"}), 400
     return jsonify({"ok": True})
 
 
@@ -319,10 +355,12 @@ def api_watch(name):
 def get_direct_stream(page_url):
     """解析视频直链 (带 30 分钟缓存)。返回 (direct_url, title)。"""
     now = time.time()
-    hit = stream_cache.get(page_url)
+    with state_lock:
+        hit = stream_cache.get(page_url)
     if hit and now - hit["at"] < STREAM_TTL:
         return hit["url"], hit["title"]
-    with yt_dlp.YoutubeDL(ydl_base_opts({"skip_download": True})) as ydl:
+    opts = ydl_base_opts({"skip_download": True, "noplaylist": True})
+    with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(page_url, download=False)
     if not info or info.get("_type") == "playlist":
         raise ValueError("不支持播放列表直连，请先下载")
@@ -335,10 +373,11 @@ def get_direct_stream(page_url):
     pool.sort(key=lambda f: (f.get("height") or 0, f.get("tbr") or 0))
     direct = pool[-1]["url"]
     title = info.get("title", "视频")
-    # 缓存裁剪，防止无限增长
-    if len(stream_cache) > 200:
-        stream_cache.clear()
-    stream_cache[page_url] = {"url": direct, "title": title, "at": now}
+    with state_lock:
+        # 缓存裁剪，防止无限增长
+        if len(stream_cache) > 200:
+            stream_cache.clear()
+        stream_cache[page_url] = {"url": direct, "title": title, "at": now}
     return direct, title
 
 
@@ -346,7 +385,6 @@ def get_direct_stream(page_url):
 def api_stream():
     """直接播放: 解析直链后由服务器实时转发视频流给浏览器 (支持 Range 拖进度)。
     会员视频需先在 🍪 里保存 Cookie。"""
-    import requests
     page_url = (request.args.get("url") or "").strip()
     if not page_url.startswith(("http://", "https://")):
         return jsonify({"ok": False, "error": "无效的视频链接"}), 400
