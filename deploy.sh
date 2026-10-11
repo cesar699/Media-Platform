@@ -101,16 +101,29 @@ EOF
 systemctl daemon-reload
 systemctl enable --now csmp
 sleep 3
-systemctl is-active csmp
+if ! systemctl is-active csmp > /dev/null; then
+  echo "错误: csmp 服务启动失败，日志如下:"
+  journalctl -u csmp -n 25 --no-pager || true
+  exit 1
+fi
 
 echo "== 4/6 安装 Caddy =="
 if ! command -v caddy > /dev/null; then
+  # Caddy 官方仓库需要 gpg 和 apt https 支持，缺失则补装
+  if ! need_cmd gpg; then
+    apt-get update -qq
+    apt-get install -y -qq gnupg debian-keyring debian-archive-keyring apt-transport-https > /dev/null
+  fi
   curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
   curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list > /dev/null
   apt-get update -qq && apt-get install -y -qq caddy > /dev/null
 fi
 
 echo "== 5/6 配置自动证书 =="
+# 备份用户可能手动改过的 Caddyfile
+if [ -f /etc/caddy/Caddyfile ]; then
+  cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.bak.csmp
+fi
 cat > /etc/caddy/Caddyfile <<EOF
 # CSMP 畅搜媒体平台 (Caddy 自动申请/续期 Let's Encrypt 证书)
 $DOMAIN {

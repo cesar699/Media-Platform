@@ -166,9 +166,13 @@ def run_job(jid, items, quality="best", clean=False):
                 hit = try_douyin_nowm(url)
                 if hit:
                     link, title = hit
-                    download_direct(link, title)
-                    record(ok_file=title + " (无水印)")
-                    continue
+                    try:
+                        download_direct(link, title)
+                    except Exception:
+                        pass  # 无水印直链失败，回退到常规下载
+                    else:
+                        record(ok_file=title + " (无水印)")
+                        continue
             opts = ydl_base_opts({
                 "format": fmt,
                 "outtmpl": os.path.join(DL_DIR, "%(title).60s [%(id)s].%(ext)s"),
