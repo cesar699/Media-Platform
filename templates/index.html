@@ -178,6 +178,10 @@
     background: rgba(139,92,246,.14); color: #c4b5fd; border: 1px solid rgba(139,92,246,.35);
   }
   .frow button.play:hover { background: rgba(139,92,246,.28); }
+  .frow button.save {
+    background: rgba(34,211,238,.12); color: #67e8f9; border: 1px solid rgba(34,211,238,.32);
+  }
+  .frow button.save:hover { background: rgba(34,211,238,.24); }
   .fempty { text-align: center; color: #55556e; padding: 26px 0; font-size: 14px; }
 
   /* 播放器弹窗 */
@@ -392,9 +396,11 @@ async function loadFiles() {
     const sz = document.createElement("span"); sz.className = "fsize"; sz.textContent = fmtSize(f.size);
     const pv = document.createElement("button"); pv.className = "play"; pv.textContent = "▶ 预览";
     pv.onclick = () => openPlayer(f.name);
+    const sv = document.createElement("button"); sv.className = "save"; sv.textContent = "⬇ 本地";
+    sv.onclick = () => { window.open("/api/watch/" + encodeURIComponent(f.name) + "?download=1", "_blank"); };
     const btn = document.createElement("button"); btn.textContent = "删除";
     btn.onclick = () => delFile(f.name);
-    d.append(nm, sz, pv, btn);
+    d.append(nm, sz, pv, sv, btn);
     el.appendChild(d);
   });
 }

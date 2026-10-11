@@ -234,15 +234,17 @@ def api_del_file(name):
 
 @app.route("/api/watch/<name>")
 def api_watch(name):
-    """在线预览: 以流式返回视频文件 (支持 Range 拖进度)。"""
+    """在线预览: 以流式返回视频文件 (支持 Range 拖进度)。
+    加 ?download=1 则作为附件下载到浏览器本地。"""
     if not name or "/" in name or "\\" in name or name.startswith("."):
         return jsonify({"ok": False, "error": "非法文件名"}), 400
     p = os.path.join(DL_DIR, name)
     if not os.path.isfile(p):
         return jsonify({"ok": False, "error": "文件不存在"}), 404
     mt, _ = mimetypes.guess_type(p)
+    as_attach = request.args.get("download") == "1"
     return send_file(p, mimetype=mt or "video/mp4",
-                     as_attachment=False, conditional=True)
+                     as_attachment=as_attach, conditional=True)
 
 
 if __name__ == "__main__":
