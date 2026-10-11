@@ -2,11 +2,12 @@
 # CSMP 畅搜媒体平台一键部署 (Ubuntu/Debian)
 # 功能: 拉取代码 -> 安装依赖 -> systemd 常驻服务 -> Caddy 反代 + 自动申请 Let's Encrypt 证书
 #
-# VPS 上一行搞定:
+# VPS 上一行搞定 (自动判断: 有 nginx 走共存版 acme.sh, 否则装 Caddy 自动证书):
 #   curl -fsSL https://raw.githubusercontent.com/cesar699/Media-Platform/main/deploy.sh | sudo bash
 #
 # (默认用根域名 csmp.si, 需已解析到本机; 换别的域名则加 DOMAIN=xxx, 如
 #  curl -fsSL https://raw.githubusercontent.com/cesar699/Media-Platform/main/deploy.sh | sudo DOMAIN=dl.csmp.si bash)
+# 强制走 Caddy (即使本机有 nginx): 加 FORCE_CADDY=1
 set -e
 
 DOMAIN="${DOMAIN:-csmp.si}"
@@ -26,6 +27,18 @@ else
   curl -fsSL "https://github.com/$REPO/archive/refs/heads/main.tar.gz" \
     | tar xz -C /tmp/csmp-src
   SRC_DIR="/tmp/csmp-src/Media-Platform-main"
+fi
+
+# 自动分流: 本机已有 nginx 则走共存版 (证书用 acme.sh, 不装 Caddy)
+# 如坚持用 Caddy, 加 FORCE_CADDY=1
+if [ -z "$FORCE_CADDY" ] && command -v nginx >/dev/null 2>&1; then
+  echo "检测到本机已安装 nginx, 自动切换到共存模式 (不装 Caddy, 证书走 acme.sh)..."
+  if [ -f "$SCRIPT_DIR/deploy-nginx.sh" ]; then
+    exec bash "$SCRIPT_DIR/deploy-nginx.sh"
+  else
+    curl -fsSL "https://raw.githubusercontent.com/$REPO/main/deploy-nginx.sh" | bash
+    exit $?
+  fi
 fi
 
 echo "== 安装到 $INSTALL_DIR (域名: $DOMAIN) =="

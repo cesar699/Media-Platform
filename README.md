@@ -28,30 +28,32 @@ python3 app.py 5000
 # 浏览器打开 http://127.0.0.1:5000
 ```
 
-## 服务器部署 (Ubuntu/Debian, 自动 HTTPS)
+## 服务器部署 (Ubuntu/Debian)
 
-VPS 上一行搞定 (自动拉代码、装依赖、起服务、配 Caddy 自动证书):
+VPS 上一行搞定，脚本会自动判断：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/cesar699/Media-Platform/main/deploy.sh | sudo bash
 ```
 
+- **本机无 nginx** → 装 Caddy，自动申请并续期 Let's Encrypt 证书，零手动操作
+- **本机有 nginx** (如已有 VPN 代理) → 自动切换共存模式：只部署后端，不装 Caddy 不碰现有站点，证书走你自己的 acme.sh
 - 默认用根域名 `csmp.si` (A 记录已指向 VPS); 换别的域名在 sudo 后加 `DOMAIN=xxx`
-- Caddy 自动完成 Let's Encrypt 证书申请与续期, 零手动操作
+- 有 nginx 但仍想用 Caddy：加 `FORCE_CADDY=1`
 - 需放行 80/443 端口 (含云厂商安全组)
 
-## 已有 nginx 共存部署 (证书走 acme.sh)
+### 已有 nginx 共存部署说明 (证书走 acme.sh)
 
-如果服务器上已有 nginx 占用 80/443 (如 VPN 代理), 用共存版:
-只部署 CSMP 后端, 写 nginx 反代配置, 不装 Caddy、不碰现有站点和证书。
+首次运行只配好 80 端口，按提示签发证书：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cesar699/Media-Platform/main/deploy-nginx.sh | sudo bash
+acme.sh --issue -d csmp.si --nginx
+acme.sh --install-cert -d csmp.si --key-file /etc/nginx/ssl/csmp.si.key \
+  --fullchain-file /etc/nginx/ssl/csmp.si.cer --reloadcmd "systemctl reload nginx"
 ```
 
-- 首次运行只配好 80 端口, 按提示用 acme.sh 签发证书后重跑一遍自动配好 443
-- 已有证书可直接带上: `... | sudo SSL_CERT=/path/x.cer SSL_KEY=/path/x.key bash`
-- 反代已针对视频流优化 (关缓冲、长超时、透传 X-Forwarded-For)
+签发后重跑一遍部署命令，自动配好 443。已有证书可直接带上：
+`... | sudo SSL_CERT=/path/x.cer SSL_KEY=/path/x.key bash`
 
 ## 说明
 
