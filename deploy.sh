@@ -36,12 +36,34 @@ cp -r "$SRC_DIR/templates" "$INSTALL_DIR/"
 chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
 APP_DIR="$INSTALL_DIR"
 
-echo "== 1/5 安装依赖 =="
-apt-get update -qq
-apt-get install -y -qq python3 python3-pip ffmpeg curl debian-keyring debian-archive-keyring apt-transport-https > /dev/null
+echo "== 1/6 环境检测 =="
+need_cmd() { command -v "$1" >/dev/null 2>&1; }
+TO_INSTALL=""
+need_cmd python3 || TO_INSTALL="$TO_INSTALL python3"
+need_cmd pip3    || TO_INSTALL="$TO_INSTALL python3-pip"
+need_cmd ffmpeg  || TO_INSTALL="$TO_INSTALL ffmpeg"
+need_cmd curl    || TO_INSTALL="$TO_INSTALL curl"
+if [ -n "$TO_INSTALL" ]; then
+  echo "缺少:$TO_INSTALL, 将自动安装"
+else
+  echo "python3 / pip3 / ffmpeg / curl 齐全"
+fi
+
+echo "== 2/6 安装系统依赖 =="
+if [ -n "$TO_INSTALL" ]; then
+  apt-get update -qq
+  # shellcheck disable=SC2086
+  apt-get install -y -qq $TO_INSTALL debian-keyring debian-archive-keyring apt-transport-https > /dev/null
+fi
+# 安装后复查: 缺一不可, 否则直接报错退出
+for cmd in python3 pip3 ffmpeg curl; do
+  need_cmd "$cmd" || { echo "错误: $cmd 安装失败, 请检查网络后重试"; exit 1; }
+done
+echo "  $(python3 --version 2>&1)"
+echo "  $(ffmpeg -version 2>/dev/null | head -n 1)"
 pip3 install --break-system-packages -q -r "$APP_DIR/requirements.txt"
 
-echo "== 2/5 systemd 服务 =="
+echo "== 3/6 systemd 服务 =="
 cat > /etc/systemd/system/csmp.service <<EOF
 [Unit]
 Description=CSMP 畅搜媒体平台
@@ -64,14 +86,14 @@ systemctl enable --now csmp
 sleep 3
 systemctl is-active csmp
 
-echo "== 3/5 安装 Caddy =="
+echo "== 4/6 安装 Caddy =="
 if ! command -v caddy > /dev/null; then
   curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
   curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list > /dev/null
   apt-get update -qq && apt-get install -y -qq caddy > /dev/null
 fi
 
-echo "== 4/5 配置自动证书 =="
+echo "== 5/6 配置自动证书 =="
 cat > /etc/caddy/Caddyfile <<EOF
 # CSMP 畅搜媒体平台 (Caddy 自动申请/续期 Let's Encrypt 证书)
 $DOMAIN {
@@ -83,7 +105,7 @@ caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 systemctl enable --now caddy
 systemctl reload caddy
 
-echo "== 5/5 放行端口 =="
+echo "== 6/6 放行端口 =="
 ufw allow 80/tcp 2>/dev/null || true
 ufw allow 443/tcp 2>/dev/null || true
 
