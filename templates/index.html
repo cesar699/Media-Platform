@@ -184,6 +184,39 @@
   .frow button.save:hover { background: rgba(34,211,238,.24); }
   .fempty { text-align: center; color: #55556e; padding: 26px 0; font-size: 14px; }
 
+  /* Cookie 设置 */
+  .filebar button { margin: 0 4px; }
+  .cookieBox {
+    background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    padding: 18px; margin-top: 12px;
+  }
+  .cookieBox .ctitle { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
+  .cookieBox .cstatus { font-size: 12px; font-weight: 400; margin-left: 8px; }
+  .cookieBox .cstatus.on { color: #4ade80; }
+  .cookieBox .cstatus.off { color: var(--mut); }
+  .cookieBox .ctip { font-size: 13px; color: var(--mut); line-height: 1.7; margin-bottom: 12px; }
+  .cookieBox .ctip code {
+    background: rgba(255,255,255,.08); padding: 1px 7px; border-radius: 6px;
+    font-size: 12.5px; color: #c4b5fd;
+  }
+  .cookieBox input[type=text], .cookieBox textarea {
+    width: 100%; background: rgba(255,255,255,.05); border: 1px solid var(--line);
+    border-radius: 10px; color: var(--txt); font-size: 13.5px;
+    padding: 10px 12px; margin-bottom: 10px; outline: none; resize: vertical;
+  }
+  .cookieBox input:focus, .cookieBox textarea:focus { border-color: rgba(139,92,246,.55); }
+  .cookieBox .crow { display: flex; gap: 10px; }
+  .cookieBox .crow button {
+    padding: 10px 26px; border-radius: 10px; font-size: 14px; cursor: pointer; border: none;
+  }
+  #cookieSave {
+    background: linear-gradient(120deg, var(--acc1), var(--acc2));
+    color: #fff; font-weight: 700;
+  }
+  #cookieClear {
+    background: rgba(255,255,255,.07); color: var(--txt); border: 1px solid var(--line);
+  }
+
   /* 播放器弹窗 */
   #playerModal {
     display: none; position: fixed; inset: 0; z-index: 50;
@@ -258,9 +291,24 @@
 
   <div class="filebar">
     <button id="filesBtn" onclick="toggleFiles()">📁 已下载文件</button>
+    <button id="cookieBtn" onclick="toggleCookies()">🍪 会员 Cookie</button>
   </div>
   <div id="filePanel" style="display:none">
     <div id="fileList"></div>
+  </div>
+  <div id="cookiePanel" style="display:none">
+    <div class="cookieBox">
+      <div class="ctitle">🍪 会员 Cookie <span id="cookieStatus" class="cstatus"></span></div>
+      <div class="ctip">在视频网站登录后，把 Cookie 填进来，就能搜/下会员视频。<br>
+        获取方式：浏览器装「Get cookies.txt」插件导出，或按 F12 在控制台输入
+        <code>document.cookie</code> 复制。</div>
+      <input type="text" id="cookieDomain" placeholder="域名，如 pornhub.com（插件导出格式可不填）">
+      <textarea id="cookieText" rows="4" placeholder="粘贴 Cookie（插件导出的 Netscape 格式，或 name=value; 格式）"></textarea>
+      <div class="crow">
+        <button id="cookieSave" onclick="saveCookies()">保存</button>
+        <button id="cookieClear" onclick="clearCookies()">清除</button>
+      </div>
+    </div>
   </div>
 
   <div id="playerModal">
@@ -411,6 +459,41 @@ async function delFile(name) {
   const j = await r.json();
   if (!j.ok) alert("删除失败: " + j.error);
   loadFiles();
+}
+
+async function toggleCookies() {
+  const p = document.getElementById("cookiePanel");
+  if (p.style.display === "none") { await refreshCookieStatus(); p.style.display = "block"; }
+  else p.style.display = "none";
+}
+
+async function refreshCookieStatus() {
+  const r = await fetch("/api/cookies");
+  const j = await r.json();
+  const el = document.getElementById("cookieStatus");
+  el.textContent = j.has_cookies ? "● 已设置" : "○ 未设置";
+  el.className = "cstatus " + (j.has_cookies ? "on" : "off");
+}
+
+async function saveCookies() {
+  const domain = document.getElementById("cookieDomain").value.trim();
+  const text = document.getElementById("cookieText").value.trim();
+  if (!text) { alert("请先粘贴 Cookie"); return; }
+  const r = await fetch("/api/cookies", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({domain, text})
+  });
+  const j = await r.json();
+  if (!j.ok) { alert("保存失败: " + j.error); return; }
+  document.getElementById("cookieText").value = "";
+  refreshCookieStatus();
+  alert("Cookie 已保存，搜索和下载会自动带上登录态");
+}
+
+async function clearCookies() {
+  if (!confirm("确定清除已保存的 Cookie 吗？")) return;
+  await fetch("/api/cookies", {method: "DELETE"});
+  refreshCookieStatus();
 }
 
 function openPlayer(name) {

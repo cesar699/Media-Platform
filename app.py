@@ -26,6 +26,49 @@ os.makedirs(DL_DIR, exist_ok=True)
 
 jobs = {}  # job_id -> {status,total,done,files,errors,created}
 MAX_JOBS = 100
+COOKIE_FILE = os.path.join(BASE_DIR, "cookies.txt")
+
+
+def ydl_base_opts(extra=None):
+    """yt-dlp 通用选项: 有 Cookie 文件时自动带上。"""
+    opts = {"quiet": True, "no_warnings": True}
+    if os.path.isfile(COOKIE_FILE):
+        opts["cookiefile"] = COOKIE_FILE
+    if extra:
+        opts.update(extra)
+    return opts
+
+
+def parse_cookies(domain, text):
+    """把粘贴的 Cookie 转成 Netscape 格式。
+    支持两种输入: 浏览器插件导出的 Netscape 文件内容,
+    或 document.cookie 复制的 name=value;... 格式 (需配合 domain)。"""
+    text = (text or "").strip()
+    if not text:
+        raise ValueError("Cookie 不能为空")
+    lines = []
+    if "Netscape HTTP Cookie File" in text or "\t" in text:
+        for line in text.splitlines():
+            line = line.strip()
+            if line and not line.startswith("#"):
+                lines.append(line)
+    else:
+        domain = (domain or "").strip().lstrip(".")
+        if not domain or "." not in domain:
+            raise ValueError("请填写正确的域名 (如 pornhub.com)")
+        dot_domain = "." + domain
+        for part in text.split(";"):
+            part = part.strip()
+            if "=" not in part:
+                continue
+            name, value = part.split("=", 1)
+            name, value = name.strip(), value.strip()
+            if not name:
+                continue
+            lines.append(f"{dot_domain}\tTRUE\t/\tTRUE\t0\t{name}\t{value}")
+    if not lines:
+        raise ValueError("没有解析到有效的 Cookie")
+    return "# Netscape HTTP Cookie File\n" + "\n".join(lines) + "\n"
 
 
 def prune_jobs():
@@ -66,8 +109,8 @@ def build_target(query, site):
 
 def search_videos(query, site):
     target = build_target(query, site)
-    opts = {"quiet": True, "no_warnings": True, "extract_flat": True,
-            "skip_download": True, "playlistend": 30}
+    opts = ydl_base_opts({"extract_flat": True, "skip_download": True,
+                          "playlistend": 30})
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(target, download=False)
     raw = info.get("entries") or []
@@ -102,11 +145,10 @@ def run_job(jid, items, quality="best", clean=False):
                     st["files"].append(title + " (无水印)")
                     st["done"] += 1
                     continue
-            opts = {"format": fmt,
-                    "outtmpl": os.path.join(DL_DIR,
-                                            "%(title).60s [%(id)s].%(ext)s"),
-                    "merge_output_format": "mp4",
-                    "quiet": True, "no_warnings": True}
+            opts = ydl_base_opts({
+                "format": fmt,
+                "outtmpl": os.path.join(DL_DIR, "%(title).60s [%(id)s].%(ext)s"),
+                "merge_output_format": "mp4"})
             with yt_dlp.YoutubeDL(opts) as ydl:
                 ydl.extract_info(url, download=True)
             st["files"].append(it.get("title", ""))
@@ -207,6 +249,29 @@ def api_job(jid):
     if not st:
         return jsonify({"ok": False, "error": "任务不存在"}), 404
     return jsonify({"ok": True, **st})
+
+
+@app.route("/api/cookies", methods=["GET", "POST", "DELETE"])
+def api_cookies():
+    """Cookie 管理: 登录态,用于会员/私密视频。
+    POST {domain, text}: 保存; GET: 返回是否已设置(不返回内容);
+    DELETE: 清除。"""
+    if request.method == "GET":
+        return jsonify({"ok": True,
+                        "has_cookies": os.path.isfile(COOKIE_FILE)})
+    if request.method == "DELETE":
+        if os.path.isfile(COOKIE_FILE):
+            os.remove(COOKIE_FILE)
+        return jsonify({"ok": True})
+    data = request.get_json(force=True)
+    try:
+        content = parse_cookies(data.get("domain"), data.get("text"))
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    with open(COOKIE_FILE, "w", encoding="utf-8") as f:
+        f.write(content)
+    os.chmod(COOKIE_FILE, 0o600)
+    return jsonify({"ok": True})
 
 
 @app.route("/api/files")
