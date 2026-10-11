@@ -6,9 +6,11 @@ video-dl-web: 网页版视频搜索下载器 (单用户个人使用)。
 
 流程: 粘贴链接或输关键词 -> 自动搜出视频列表 -> 勾选 -> 下载。
 """
+import json
 import os
 import re
 import threading
+import time
 import urllib.parse
 import urllib.request
 import uuid
@@ -21,7 +23,19 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DL_DIR = os.path.join(BASE_DIR, "downloads")
 os.makedirs(DL_DIR, exist_ok=True)
 
-jobs = {}  # job_id -> {status,total,done,files,errors}
+jobs = {}  # job_id -> {status,total,done,files,errors,created}
+MAX_JOBS = 100
+
+
+def prune_jobs():
+    """防止 jobs 无限增长: 超过上限时先清掉最早完成的。"""
+    if len(jobs) <= MAX_JOBS:
+        return
+    done = sorted(
+        ((jid, j) for jid, j in jobs.items() if j["status"] == "done"),
+        key=lambda kv: kv[1].get("created", 0))
+    for jid, _ in done[:len(jobs) - MAX_JOBS]:
+        jobs.pop(jid, None)
 
 QUALITY_FORMATS = {
     "best": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
@@ -103,7 +117,6 @@ def run_job(jid, items, quality="best", clean=False):
 
 def try_douyin_nowm(url):
     """尝试从抖音官方接口拿无水印直链。成功返回 (直链, 标题), 失败返回 None。"""
-    import json
     headers = {"User-Agent": UA_MOBILE}
     try:
         req = urllib.request.Request(url, headers=headers)
@@ -129,17 +142,22 @@ def try_douyin_nowm(url):
 
 
 def download_direct(url, title_hint="video"):
-    """直接下载文件 URL (用于无水印直链)。"""
+    """直接下载文件 URL (用于无水印直链)。失败时清理残留文件。"""
     safe = re.sub(r'[\\/:*?"<>|]', "_", title_hint)[:60] or "video"
     dest = os.path.join(DL_DIR, safe + ".mp4")
     headers = {"User-Agent": UA_MOBILE, "Referer": "https://www.iesdouyin.com/"}
     req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=120) as r, open(dest, "wb") as f:
-        while True:
-            chunk = r.read(1024 * 256)
-            if not chunk:
-                break
-            f.write(chunk)
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r, open(dest, "wb") as f:
+            while True:
+                chunk = r.read(1024 * 256)
+                if not chunk:
+                    break
+                f.write(chunk)
+    except Exception:
+        if os.path.exists(dest):
+            os.remove(dest)
+        raise
     return dest
 
 
@@ -174,7 +192,9 @@ def api_download():
     jid = uuid.uuid4().hex[:12]
     jobs[jid] = {"status": "running", "total": len(items), "done": 0,
                  "files": [], "errors": [],
-                 "quality": quality, "clean": clean}
+                 "quality": quality, "clean": clean,
+                 "created": time.time()}
+    prune_jobs()
     threading.Thread(target=run_job, args=(jid, items, quality, clean),
                      daemon=True).start()
     return jsonify({"ok": True, "job": jid, "total": len(items)})

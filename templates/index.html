@@ -258,19 +258,26 @@ async function doSearch() {
   const site = document.getElementById("site").value;
   if (!q) return;
   setStatus("正在搜索…");
-  document.getElementById("sBtn").disabled = true;
+  const btn = document.getElementById("sBtn");
+  btn.disabled = true;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 120000);
   try {
     const r = await fetch("/api/search", {
       method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({query: q, site})
+      body: JSON.stringify({query: q, site}), signal: ctrl.signal
     });
     const j = await r.json();
     if (!j.ok) throw new Error(j.error);
     items = j.items;
     render();
     setStatus(j.count ? `找到 ${j.count} 个视频，点击卡片勾选` : "没有找到视频，换个关键词试试");
-  } catch (e) { setStatus("出错: " + e.message); }
-  document.getElementById("sBtn").disabled = false;
+  } catch (e) {
+    setStatus("出错: " + (e.name === "AbortError" ? "搜索超时，请重试" : e.message));
+  } finally {
+    clearTimeout(timer);
+    btn.disabled = false;
+  }
 }
 
 function render() {
@@ -282,7 +289,7 @@ function render() {
     c.className = "card" + (it._sel ? " sel" : "");
     c.innerHTML = `
       <div class="thumb">
-        ${it.thumbnail ? `<img loading="lazy" src="${it.thumbnail}" onerror="this.remove()">` : ""}
+        ${it.thumbnail ? `<img loading="lazy" src="${escapeHtml(it.thumbnail)}" onerror="this.remove()">` : ""}
         ${it.duration ? `<span class="dur">${fmt(it.duration)}</span>` : ""}
         <div class="check"></div>
       </div>
@@ -362,9 +369,23 @@ async function delFile(name) {
 
 async function poll(jid) {
   clearInterval(timer);
+  let fails = 0;
   timer = setInterval(async () => {
-    const r = await fetch("/api/job/" + jid);
-    const j = await r.json();
+    let j;
+    try {
+      const r = await fetch("/api/job/" + jid);
+      if (!r.ok) throw new Error("任务查询失败");
+      j = await r.json();
+      fails = 0;
+    } catch (e) {
+      fails++;
+      if (fails >= 5) {
+        clearInterval(timer);
+        setStatus("任务状态查询失败，请刷新页面重试");
+        document.getElementById("dlBtn").disabled = false;
+      }
+      return;
+    }
     const pct = j.total ? Math.round(j.done / j.total * 100) : 0;
     document.getElementById("pfill").style.width = pct + "%";
     document.getElementById("prog").textContent = `${j.done}/${j.total}`;
