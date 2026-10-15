@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TLCore · 天龙核心</title>
+<style>
+  :root { --bg:#0f141b; --card:#182130; --line:#263449; --txt:#e6edf3; --dim:#8b98a9;
+          --acc:#3b82f6; --ok:#22c55e; --bad:#ef4444; --warn:#f59e0b; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:14px/1.55 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
+  a { color:var(--acc); }
+  .wrap { max-width:1060px; margin:0 auto; padding:18px 16px 48px; }
+  header { display:flex; align-items:center; gap:12px; padding:6px 0 16px; flex-wrap:wrap; }
+  .logo { font-size:20px; font-weight:700; letter-spacing:.5px; }
+  .logo span { color:var(--acc); }
+  .ver { color:var(--dim); font-size:12px; }
+  .spacer { flex:1; }
+  .pill { padding:3px 10px; border-radius:999px; font-size:12px; border:1px solid var(--line); }
+  .pill.on { color:var(--ok); border-color:var(--ok); }
+  .pill.off { color:var(--bad); border-color:var(--bad); }
+  button { background:var(--acc); color:#fff; border:0; border-radius:8px; padding:7px 14px; cursor:pointer; font-size:13px; }
+  button.ghost { background:transparent; border:1px solid var(--line); color:var(--txt); }
+  button.danger { background:transparent; border:1px solid var(--bad); color:var(--bad); }
+  button:disabled { opacity:.5; cursor:wait; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+  .card .k { color:var(--dim); font-size:12px; }
+  .card .v { font-size:20px; font-weight:600; margin-top:2px; word-break:break-all; }
+  .panel { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
+  .panel h3 { margin:0 0 12px; font-size:15px; }
+  table { width:100%; border-collapse:collapse; }
+  th,td { text-align:left; padding:9px 8px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  th { color:var(--dim); font-weight:500; font-size:12px; }
+  .badge { background:#1f3a5f; color:#9ec5ff; padding:2px 8px; border-radius:6px; font-size:12px; white-space:nowrap; }
+  .ops { display:flex; gap:6px; flex-wrap:wrap; }
+  .ops button { padding:4px 10px; font-size:12px; }
+  .switch { position:relative; width:38px; height:20px; appearance:none; background:#334155; border-radius:999px; cursor:pointer; outline:none; }
+  .switch:checked { background:var(--ok); }
+  .switch::after { content:""; position:absolute; top:2px; left:2px; width:16px; height:16px; background:#fff; border-radius:50%; transition:.15s; }
+  .switch:checked::after { left:20px; }
+  dialog { background:var(--card); color:var(--txt); border:1px solid var(--line); border-radius:14px; padding:22px; width:min(520px,92vw); }
+  dialog::backdrop { background:rgba(0,0,0,.6); }
+  label { display:block; color:var(--dim); font-size:12px; margin:12px 0 5px; }
+  input,select,textarea { width:100%; background:#0d1420; border:1px solid var(--line); color:var(--txt); border-radius:8px; padding:8px 10px; font-size:14px; }
+  .center { max-width:380px; margin:12vh auto 0; }
+  .err { color:var(--bad); min-height:20px; font-size:13px; }
+  .hint { color:var(--dim); font-size:12px; }
+  .qrbox { text-align:center; }
+  .qrbox img { background:#fff; border-radius:10px; padding:8px; width:240px; height:240px; }
+  .linktext { word-break:break-all; background:#0d1420; border:1px solid var(--line); border-radius:8px; padding:10px; font-size:12px; max-height:120px; overflow:auto; }
+  .toast { position:fixed; bottom:22px; left:50%; transform:translateX(-50%); background:#1e293b; border:1px solid var(--line);
+           padding:10px 18px; border-radius:10px; display:none; z-index:50; }
+  .row { display:flex; gap:10px; align-items:end; flex-wrap:wrap; }
+  .row > div { flex:1; min-width:180px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- auth view -->
+  <div id="authView" class="center" style="display:none">
+    <div class="panel">
+      <div class="logo">TL<span>Core</span> · 天龙核心</div>
+      <p class="hint" id="authHint"></p>
+      <label>用户名</label>
+      <input id="authUser" autocomplete="username" value="admin">
+      <label>密码</label>
+      <input id="authPass" type="password" autocomplete="current-password">
+      <div class="err" id="authErr"></div>
+      <button id="authBtn" style="width:100%">登录</button>
+    </div>
+  </div>
+
+  <!-- app view -->
+  <div id="appView" style="display:none">
+    <header>
+      <div class="logo">TL<span>Core</span> · 天龙核心</div>
+      <div class="ver" id="verText"></div>
+      <div class="spacer"></div>
+      <span class="pill" id="corePill">核心状态 …</span>
+      <button class="ghost" id="restartBtn">重启核心</button>
+      <button class="ghost" id="stopBtn">停止核心</button>
+      <button class="ghost" id="logoutBtn">退出</button>
+    </header>
+
+    <div class="cards">
+      <div class="card"><div class="k">核心状态</div><div class="v" id="statRunning">—</div></div>
+      <div class="card"><div class="k">入站总数</div><div class="v" id="statTotal">—</div></div>
+      <div class="card"><div class="k">已启用</div><div class="v" id="statEnabled">—</div></div>
+      <div class="card"><div class="k">累计流量 ↑ / ↓</div><div class="v" id="statTraffic" style="font-size:15px">—</div></div>
+      <div class="card"><div class="k">当前连接</div><div class="v" id="statActive">—</div></div>
+      <div class="card"><div class="k">服务器地址（链接用）</div><div class="v" id="statAddr" style="font-size:15px">—</div></div>
+    </div>
+
+    <div class="panel">
+      <h3>入站管理
+        <button id="newBtn" style="float:right">＋ 新建入站</button>
+      </h3>
+      <table>
+        <thead><tr><th>备注</th><th>协议</th><th>端口</th><th>流量 ↑ / ↓</th><th>连接（当前/累计）</th><th>启用</th><th>操作</th></tr></thead>
+        <tbody id="inboundRows"><tr><td colspan="7" class="hint">加载中…</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <h3>订阅链接</h3>
+      <p class="hint" style="margin-top:0">把订阅地址导入客户端（v2rayN / v2rayNG / Shadowrocket / Streisand 等），一次同步全部已启用节点；增删节点后客户端更新订阅即可。</p>
+      <div class="row">
+        <div><input id="subUrl" readonly></div>
+        <button id="subCopyBtn">复制</button>
+        <button class="ghost" id="subQrBtn">二维码</button>
+        <button class="danger" id="subResetBtn">重置令牌</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>设置</h3>
+      <div class="row">
+        <div>
+          <label style="margin-top:0">服务器地址（IP 或域名，用于生成分享链接）</label>
+          <input id="setAddr" placeholder="如 1.2.3.4 或 example.com">
+        </div>
+        <button id="saveAddrBtn">保存地址</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div><label style="margin-top:0">旧密码</label><input id="oldPass" type="password"></div>
+        <div><label style="margin-top:0">新密码（≥6 位）</label><input id="newPass" type="password"></div>
+        <button id="changePassBtn" class="ghost">修改密码</button>
+      </div>
+    </div>
+    <p class="hint">TLCore-Native 0.2.0 · 自研原生内核 · 单用户自用</p>
+  </div>
+</div>
+
+<!-- create dialog -->
+<dialog id="createDlg">
+  <h3 style="margin-top:0">新建入站</h3>
+  <label>协议</label>
+  <select id="fProtocol"></select>
+  <p class="hint" id="fProtoDesc"></p>
+  <label>备注</label>
+  <input id="fRemark" placeholder="如 洛杉矶主节点">
+  <label>端口</label>
+  <input id="fPort" type="number" min="1" max="65535">
+  <label>伪装 SNI（TLS 类协议用）</label>
+  <input id="fSni" value="www.microsoft.com">
+  <div class="err" id="createErr"></div>
+  <div class="row" style="margin-top:8px">
+    <button class="ghost" id="createCancel">取消</button>
+    <button id="createGo">创建并启用</button>
+  </div>
+</dialog>
+
+<!-- link dialog -->
+<dialog id="linkDlg">
+  <h3 style="margin-top:0" id="linkTitle">节点链接</h3>
+  <div class="qrbox"><img id="linkQr" alt="二维码"></div>
+  <label>分享链接</label>
+  <div class="linktext" id="linkText"></div>
+  <div class="row" style="margin-top:12px">
+    <button class="ghost" id="linkClose">关闭</button>
+    <button id="linkCopy">复制链接</button>
+  </div>
+</dialog>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+let protocols = [], isSetup = false;
+
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 2600);
+}
+async function api(path, opts = {}) {
+  const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  return data;
+}
+
+async function boot() {
+  const b = await api('/api/bootstrap');
+  $('verText').textContent = b.version || '';
+  try {
+    await api('/api/status');
+    showApp();
+  } catch {
+    isSetup = !b.admin_set;
+    $('authHint').textContent = isSetup ? '首次使用：创建管理员账号' : '登录管理面板';
+    $('authBtn').textContent = isSetup ? '创建并登录' : '登录';
+    $('authView').style.display = 'block';
+  }
+}
+
+$('authBtn').onclick = async () => {
+  $('authErr').textContent = '';
+  try {
+    await api(isSetup ? '/api/setup' : '/api/login', {
+      method: 'POST',
+      body: JSON.stringify({ username: $('authUser').value.trim(), password: $('authPass').value })
+    });
+    $('authView').style.display = 'none';
+    showApp();
+  } catch (e) { $('authErr').textContent = e.message; }
+};
+$('authPass').addEventListener('keydown', e => { if (e.key === 'Enter') $('authBtn').click(); });
+
+async function showApp() {
+  $('appView').style.display = 'block';
+  protocols = await api('/api/protocols');
+  const sel = $('fProtocol');
+  sel.innerHTML = protocols.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+  sel.onchange = syncProtoForm;
+  syncProtoForm();
+  const settings = await api('/api/settings');
+  $('setAddr').value = settings.server_addr || '';
+  await loadSubscription();
+  await refresh();
+}
+
+let subInfo = null;
+async function loadSubscription() {
+  try {
+    subInfo = await api('/api/subscription');
+    $('subUrl').value = subInfo.url || '';
+  } catch { $('subUrl').value = ''; }
+}
+$('subCopyBtn').onclick = async () => {
+  if (!subInfo) return;
+  await navigator.clipboard.writeText(subInfo.url);
+  toast('订阅地址已复制');
+};
+$('subQrBtn').onclick = () => {
+  if (!subInfo) return;
+  currentLink = subInfo.url;
+  $('linkTitle').textContent = '订阅链接';
+  $('linkText').textContent = subInfo.url;
+  $('linkQr').src = '/api/subscription/qr';
+  $('linkDlg').showModal();
+};
+$('subResetBtn').onclick = async () => {
+  if (!confirm('重置后旧订阅地址立即失效，客户端需重新导入。继续？')) return;
+  try {
+    subInfo = await api('/api/subscription/reset', { method: 'POST' });
+    $('subUrl').value = subInfo.url || '';
+    toast('订阅令牌已重置');
+  } catch (e) { toast(e.message); }
+};
+
+function syncProtoForm() {
+  const p = protocols.find(x => x.id === $('fProtocol').value);
+  if (!p) return;
+  $('fProtoDesc').textContent = p.description;
+  $('fPort').value = p.default_port;
+}
+
+async function refresh() {
+  const st = await api('/api/status');
+  $('corePill').textContent = st.running ? '核心运行中' : '核心已停止';
+  $('corePill').className = 'pill ' + (st.running ? 'on' : 'off');
+  $('statRunning').textContent = st.running ? '运行中' : '已停止';
+  $('statTotal').textContent = st.inbounds_total;
+  $('statEnabled').textContent = st.inbounds_enabled;
+  $('statAddr').textContent = st.server_addr || '（未设置）';
+  let stats = { per_inbound: {}, total_up: 0, total_down: 0 };
+  try { stats = await api('/api/stats'); } catch {}
+  $('statTraffic').textContent = fmtBytes(stats.total_up) + ' / ' + fmtBytes(stats.total_down);
+  let active = 0;
+  for (const k in stats.per_inbound) active += stats.per_inbound[k].active_conns || 0;
+  $('statActive').textContent = active;
+  const rows = await api('/api/inbounds');
+  const tb = $('inboundRows');
+  if (!rows.length) {
+    tb.innerHTML = '<tr><td colspan="7" class="hint">暂无入站，点右上角「新建入站」开始</td></tr>';
+    return;
+  }
+  tb.innerHTML = '';
+  for (const inb of rows) {
+    const t = stats.per_inbound[inb.tag] || { up_bytes: 0, down_bytes: 0, active_conns: 0, total_conns: 0 };
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${escapeHtml(inb.remark)}</td>
+      <td><span class="badge">${escapeHtml(inb.protocol)}</span></td>
+      <td>${inb.port}</td>
+      <td style="white-space:nowrap">${fmtBytes(t.up_bytes)} / ${fmtBytes(t.down_bytes)}</td>
+      <td>${t.active_conns} / ${t.total_conns}</td>
+      <td><input type="checkbox" class="switch" ${inb.enabled ? 'checked' : ''}></td>
+      <td><div class="ops">
+        <button class="ghost act-link">链接</button>
+        <button class="danger act-del">删除</button>
+      </div></td>`;
+    tr.querySelector('.switch').onchange = async e => {
+      try { await api(`/api/inbounds/${inb.id}/toggle`, { method: 'POST', body: JSON.stringify({ enabled: e.target.checked }) }); toast('已更新'); refresh(); }
+      catch (err) { toast(err.message); e.target.checked = !e.target.checked; }
+    };
+    tr.querySelector('.act-link').onclick = () => openLink(inb);
+    tr.querySelector('.act-del').onclick = async () => {
+      if (!confirm(`删除入站「${inb.remark}」？`)) return;
+      try { await api(`/api/inbounds/${inb.id}`, { method: 'DELETE' }); toast('已删除'); refresh(); }
+      catch (err) { toast(err.message); }
+    };
+    tb.appendChild(tr);
+  }
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function fmtBytes(n) {
+  n = Number(n) || 0;
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let u = 0;
+  while (n >= 1024 && u < units.length - 1) { n /= 1024; u++; }
+  return (u === 0 ? n : n.toFixed(1)) + ' ' + units[u];
+}
+
+let currentLink = '';
+function openLink(inb) {
+  currentLink = inb.link;
+  $('linkTitle').textContent = inb.remark + ' · ' + inb.protocol;
+  $('linkText').textContent = inb.link;
+  $('linkQr').src = '/api/inbounds/' + inb.id + '/qr';
+  $('linkDlg').showModal();
+}
+$('linkClose').onclick = () => $('linkDlg').close();
+$('linkCopy').onclick = async () => { await navigator.clipboard.writeText(currentLink); toast('链接已复制'); };
+
+$('newBtn').onclick = () => { $('createErr').textContent = ''; $('createDlg').showModal(); };
+$('createCancel').onclick = () => $('createDlg').close();
+$('createGo').onclick = async () => {
+  const btn = $('createGo'); btn.disabled = true;
+  try {
+    await api('/api/inbounds', {
+      method: 'POST',
+      body: JSON.stringify({
+        protocol: $('fProtocol').value,
+        port: parseInt($('fPort').value || '0', 10),
+        remark: $('fRemark').value.trim(),
+        sni: $('fSni').value.trim()
+      })
+    });
+    $('createDlg').close();
+    toast('入站已创建并启用');
+    refresh();
+  } catch (e) { $('createErr').textContent = e.message; }
+  btn.disabled = false;
+};
+
+$('restartBtn').onclick = async () => {
+  try { await api('/api/core/restart', { method: 'POST' }); toast('核心已重启'); refresh(); }
+  catch (e) { toast(e.message); }
+};
+$('stopBtn').onclick = async () => {
+  try { await api('/api/core/stop', { method: 'POST' }); toast('核心已停止'); refresh(); }
+  catch (e) { toast(e.message); }
+};
+$('logoutBtn').onclick = async () => { await api('/api/logout', { method: 'POST' }); location.reload(); };
+$('saveAddrBtn').onclick = async () => {
+  try { await api('/api/settings', { method: 'POST', body: JSON.stringify({ server_addr: $('setAddr').value.trim() }) }); toast('已保存，链接将使用新地址'); refresh(); }
+  catch (e) { toast(e.message); }
+};
+$('changePassBtn').onclick = async () => {
+  try {
+    await api('/api/settings/password', { method: 'POST', body: JSON.stringify({ old: $('oldPass').value, new: $('newPass').value }) });
+    toast('密码已修改'); $('oldPass').value = $('newPass').value = '';
+  } catch (e) { toast(e.message); }
+};
+
+boot();
+</script>
+</body>
+</html>
