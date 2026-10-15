@@ -2,18 +2,19 @@
 # TLCore-Native 一键部署脚本
 #
 # 在你的 VPS 上以 root 身份运行（一行搞定）：
-#   curl -fsSL https://raw.githubusercontent.com/cesar699/tlcore-native/main/deploy.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/cesar699/Media-Platform/main/tlcore-native/deploy.sh | sudo bash
 #
 # 可选环境变量：
 #   PANEL_PORT=8080        面板监听端口（默认 8080）
 #   ADMIN_USER=admin       管理员用户名（默认 admin）
 #   ADMIN_PASSWORD=...     管理员密码；不填则自动生成随机密码并打印出来
-#   REPO=...               仓库地址（默认 github.com/cesar699/tlcore-native）
+#   REPO=...               仓库地址（默认 github.com/cesar699/Media-Platform，代码在其 tlcore-native/ 子目录）
 #
 # 重复运行 = 更新：拉最新代码、重新编译、重启服务，/var/lib/tlcore-native 下的数据不动。
 set -euo pipefail
 
-REPO="${REPO:-https://github.com/cesar699/tlcore-native.git}"
+REPO="${REPO:-https://github.com/cesar699/Media-Platform.git}"
+SUBDIR="tlcore-native"
 INSTALL_DIR="/opt/tlcore-native"
 DATA_DIR="/var/lib/tlcore-native"
 BIN="/usr/local/bin/tlcore-native"
@@ -67,7 +68,7 @@ fi
 log "Go: $(go version)"
 
 # ---------- 拉代码、编译 ----------
-if [ -d "$INSTALL_DIR/.git" ]; then
+if [ -d "$INSTALL_DIR/.git" ] && [ "$(git -C "$INSTALL_DIR" remote get-url origin 2>/dev/null || true)" = "$REPO" ]; then
     log "更新代码…"
     git -C "$INSTALL_DIR" fetch -q origin
     git -C "$INSTALL_DIR" reset -q --hard origin/HEAD
@@ -76,10 +77,12 @@ else
     rm -rf "$INSTALL_DIR"
     git clone -q "$REPO" "$INSTALL_DIR"
 fi
+SRC_DIR="$INSTALL_DIR/$SUBDIR"
+[ -f "$SRC_DIR/go.mod" ] || die "仓库里没找到 $SUBDIR/go.mod，代码拉取不完整"
 log "编译…"
 export GOTMPDIR="${GOTMPDIR:-$INSTALL_DIR/.build-tmp}"
 mkdir -p "$GOTMPDIR"
-(cd "$INSTALL_DIR" && CGO_ENABLED=0 go build -trimpath -o "$BIN" .)
+(cd "$SRC_DIR" && CGO_ENABLED=0 go build -trimpath -o "$BIN" .)
 chmod 755 "$BIN"
 log "二进制: $BIN ($("$BIN" -h 2>/dev/null | head -1 || echo ok))"
 

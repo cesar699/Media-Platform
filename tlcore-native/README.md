@@ -53,7 +53,7 @@ TLCORE_ADMIN_PASSWORD='你的密码' ./tlcore-native -addr 0.0.0.0:8080 -data ./
 在 VPS 上以 root 运行（一行）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cesar699/tlcore-native/main/deploy.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/cesar699/Media-Platform/main/tlcore-native/deploy.sh | sudo bash
 ```
 
 脚本会：装 Go 工具链（如缺）→ 拉代码编译 → 装 systemd 服务并开机自启 →
