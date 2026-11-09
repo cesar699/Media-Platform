@@ -1,14 +1,16 @@
 # Render 免费版 VLESS + WebSocket 节点
 # Render 只出 HTTP/WebSocket，裸 TCP 端口出不去，所以用 WS 传输走它自带的 443。
 # UUID / WS_PATH 不进仓库，通过 Render 后台 Environment Variables 传入。
+# 注意：sing-box 官方二进制是 glibc 动态链接的，Alpine（musl）跑不了，
+# 所以基础镜像必须用带 glibc 的 Debian，不能用 Alpine。
 
-FROM alpine:3.20
+FROM debian:bookworm-slim
 
-RUN apk add --no-cache ca-certificates curl \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
     && curl -fsSL https://github.com/SagerNet/sing-box/releases/download/v1.14.3/sing-box-1.14.3-linux-amd64.tar.gz -o /tmp/sb.tgz \
     && tar -xzf /tmp/sb.tgz -C /tmp \
     && mv /tmp/sing-box-1.14.3-linux-amd64/sing-box /usr/local/bin/sing-box \
-    && rm -rf /tmp/* \
+    && rm -rf /tmp/* /var/lib/apt/lists/* \
     && sing-box version
 
 COPY config.json.template /etc/sing-box/config.json.template
